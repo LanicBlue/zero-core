@@ -459,35 +459,209 @@ describe("acceptance-final §G.4 — running session applies new revision at saf
 			"§G.4 (b): next step's CallerCtx.wikiAccess must reflect the NEW revision",
 		).toBe(newRev);
 
-		// ── DIAGNOSTIC ASSERTIONS (boundary mechanism) ────────────────────────
-		// Document the actual mechanism the publish path takes. See finding
-		// report: publishAgentWikiPolicy's onChange callback calls
-		// loop.applyConfigUpdate DIRECTLY on busy loops (not enqueueConfigPatch),
-		// so loop.config.wikiAccess is updated MID-CALL (before StepEnd). The
-		// in-flight tool is still safe (snapshot built before publish); the next
-		// step sees the new revision. This is consistent with the §G.4
-		// OBSERVABLE invariant (in-flight safe + next-step new), but diverges
-		// from the "StepEnd boundary" mechanism wording in the publishAgentWikiPolicy
-		// docstring (which claims busy loops use enqueueConfigPatch + StepEnd flush).
+		// ── DIAGNOSTIC ASSERTIONS (boundary mechanism — corrected StepEnd semantics) ──
+		// P0-1 fix: publishAgentWikiPolicy's onChange callback now routes the
+		// patch through enqueueConfigPatch, which on a BUSY loop does NOT call
+		// applyConfigUpdate synchronously — it pushes the patch into
+		// pendingConfigPatches and lets the config-sync StepEnd hook flush it
+		// at the safety boundary. So immediately after publish (before StepEnd):
+		//   - loop.config.wikiAccess.policyRevision is STILL the OLD revision
+		//     (loop.config is not swapped mid-step).
+		//   - pendingConfigPatches for this session has ≥1 entry.
+		//   - affectedSessions[busy].applied === false (pending, not applied).
+		// This matches the §G.5-runtime project-switch path and the
+		// publishAgentWikiPolicy docstring ("busy loops use enqueueConfigPatch
+		// + StepEnd flush"). The earlier "finding" asserted the bug; this is
+		// now the passing specification.
 		expect(configRevMidCall,
-			"§G.4 mechanism: publish path writes loop.config.wikiAccess at publish time (mid-call). " +
-			"Finding: publishAgentWikiPolicy applies mid-step via onChange→applyConfigUpdate, NOT StepEnd flush.",
-		).toBe(newRev);
-		expect(pendingAfterPublish.length,
-			"§G.4 mechanism: publish path does NOT use pendingConfigPatches queue (0 pending). " +
-			"StepEnd flush path is for project-switch + memory-archive only.",
-		).toBe(0);
-		expect(affectedAppliedMidCall,
-			"§G.4 mechanism: affectedSessions.applied=true immediately (never went pending→applied). " +
-			"The pending→applied transition only happens for project-switch / memory-archive paths.",
-		).toBe(true);
-
-		// Show that despite the mid-call apply, the in-flight tool's snapshot
-		// was ALREADY captured (CallerCtx built pre-publish) — the safety
-		// invariant that actually matters.
-		expect(snapshots[0]!.policyRevision,
-			"§G.4 invariant holds despite mid-call apply: in-flight snapshot built BEFORE publish",
+			"§G.4 mechanism (P0-1): publish path must NOT write loop.config.wikiAccess mid-step — " +
+			"still the OLD revision right after publish (StepEnd boundary holds).",
 		).toBe(initialRev);
+		expect(pendingAfterPublish.length,
+			"§G.4 mechanism (P0-1): publish path must enqueue the patch on busy loop " +
+			"(pendingConfigPatches ≥ 1) — StepEnd flush will apply it.",
+		).toBeGreaterThanOrEqual(1);
+		expect(affectedAppliedMidCall,
+			"§G.4 mechanism (P0-1): affectedSessions[busy].applied must be false right after publish " +
+			"(patch is pending StepEnd flush, not applied).",
+		).toBe(false);
+
+		// And the in-flight tool's snapshot was already captured BEFORE publish
+		// (CallerCtx built pre-publish) — supplementary confirmation of the
+		// safety invariant that actually matters.
+		expect(snapshots[0]!.policyRevision,
+			"§G.4 supplementary: in-flight snapshot built BEFORE publish stays at OLD revision",
+		).toBe(initialRev);
+	}, 30000);
+});
+
+// ===========================================================================
+// §G.4 (multi-call) — within a SINGLE model step emitting MULTIPLE tool calls,
+// a publish between call #1 and call #2 must NOT swap loop.config mid-step.
+// Both calls' CallerCtx must see the SAME (old) revision.
+//
+// This is the invariant the original §G.4 test completely missed: it used
+// two SEPARATE model steps (one tool call each), so the StepEnd between them
+// legitimately swapped the config. The bug (P0-1) only manifested when a
+// publish landed INSIDE a single step between two tool calls — and the OLD
+// code (direct applyConfigUpdate on busy) would swap loop.config.wikiAccess
+// under call #2's feet, breaking the per-step revision-coherence invariant.
+// ===========================================================================
+
+describe("acceptance-final §G.4 (multi-tool-call-per-step) — single step keeps one revision", () => {
+	test("publish between two tool calls in ONE step: both calls see the SAME old revision", async () => {
+		const c = buildSvc();
+		ctxHolder = c;
+		const agent = c.agentStore.create({
+			name: "g4-multi-agent",
+			provider: "Mock",
+			model: "mock-boundary",
+			toolPolicy: { tools: {} },
+			wikiGrants: [{ scope: "memory://", actions: ["read", "expand"] }],
+			wikiPolicyRevision: 7,
+		} as any);
+
+		const sessionId = `g4-multi-${Date.now()}`;
+
+		const initial = (c.svc as any).compileWikiAccessForSession(agent, sessionId, undefined);
+		expect(initial.wikiAccess, "precondition: initial wikiAccess compiled").toBeDefined();
+		const initialRev: number = initial.wikiAccess.policyRevision;
+		expect(initialRev, "precondition: compiled policyRevision matches agent record").toBe(7);
+
+		// Two latches for the two tool calls. latches[0] gates call #1's release
+		// (and thus call #2's snapshot timing — see below). latches[1] gates
+		// call #2's release so we can sequence the post-publish assertions.
+		const latches = [new Latch(), new Latch()];
+		const captureSignals = [makeCaptureSignal(), makeCaptureSignal()];
+		const snapshots: Array<CompiledWikiAccess | undefined> = [];
+
+		// ── Multi-call Block tool ───────────────────────────────────────────
+		// Deterministic across ai-sdk parallel AND sequential tool execution.
+		// Counter assigns each invocation an idx (0 for first, 1 for second).
+		// idx 1 WAITS until latches[0] resolves (i.e. after the test has done
+		// the mid-step publish) before capturing its snapshot. This forces
+		// snapshot[1] to be captured AFTER publish even if ai-sdk spawns both
+		// execute()s concurrently. The invariant under test: snapshot[1] must
+		// STILL be the OLD revision because the publish is deferred to StepEnd
+		// and does NOT swap loop.config mid-step.
+		let nextIdx = -1;
+		const blockTool = tool({
+			description: "Multi-call Block — idx 0 captures immediately; idx 1 captures only after latch[0] released.",
+			inputSchema: z.object({}),
+			execute: async (_input: any, opts: any) => {
+				const idx = ++nextIdx;
+				const host = opts?.experimental_context;
+				const buildCallerCtx = (host && typeof host === "object" && "buildCallerCtx" in host)
+					? (host as { buildCallerCtx: (id: string) => any }).buildCallerCtx
+					: null;
+				const toolCallId = (opts?.toolCallId ?? opts?.id ?? "") as string;
+
+				if (idx === 1) {
+					// Wait for call #0 to have been released by the test. The
+					// test releases latches[0] ONLY after publishing, so by the
+					// time this resolves, the publish has already happened. We
+					// then capture snapshot[1] from loop.config.wikiAccess.
+					await latches[0].getPromise();
+				}
+
+				const callerCtx = buildCallerCtx ? buildCallerCtx(toolCallId) : null;
+				const access: CompiledWikiAccess | undefined = callerCtx?.wikiAccess;
+				snapshots.push(access);
+
+				captureSignals[idx]?.resolve();
+				await latches[idx].getPromise();
+				return "ok";
+			},
+		});
+
+		const loop = buildAndRegisterLoop({
+			svc: c.svc, agentId: agent.id, sessionId, workspaceDir: c.dir,
+			wikiAccess: initial.wikiAccess, wikiContextSection: initial.dynamicSection,
+			blockTool,
+		});
+
+		// ── Mock model: ONE step emitting TWO Block tool-call chunks then finish.
+		// Both tool calls live in the same model step → no StepEnd between them
+		// → the publish done while call #1 is in-flight must stay deferred until
+		// after this step's StepEnd (which fires once both tools have returned).
+		resolveModelMock.mockReturnValue(createMockModel({
+			steps: [
+				[
+					{ type: "tool-call", toolName: "Block", input: {} },
+					{ type: "tool-call", toolName: "Block", input: {} },
+					{ type: "finish", finishReason: "tool-calls" },
+				],
+				// Step 2 is only reached AFTER StepEnd for step 1 has flushed
+				// the pending patch — so step 2 (if it ever runs) would see the
+				// NEW revision. We don't drive it for this assertion, but having
+				// it keeps run() from throwing on an out-of-schedule call.
+				[{ type: "text", text: "done" }, { type: "finish", finishReason: "stop" }],
+			],
+		}));
+
+		const runPromise = loop.run("go");
+
+		// Wait for call #0 to capture its snapshot (it's now awaiting latch[0]).
+		await captureSignals[0].promise;
+		await waitFor(() => snapshots.length >= 1);
+		expect(snapshots[0], "precondition: call #0 captured a snapshot").toBeDefined();
+		expect(snapshots[0]!.policyRevision,
+			"precondition: call #0 (pre-publish) sees the OLD revision",
+		).toBe(initialRev);
+
+		// ── MID-STEP: publish grants (CAS revision+1). Call #0 is in-flight
+		// (awaiting latch[0]); call #1 has NOT yet captured its snapshot
+		// (it's waiting on latch[0]'s release). Under the OLD buggy code this
+		// would synchronously swap loop.config.wikiAccess; under P0-1 the patch
+		// is enqueued and loop.config stays at the OLD revision until StepEnd.
+		const pubResult = c.svc.publishAgentWikiPolicy({
+			agentId: agent.id,
+			expectedRevision: initialRev,
+			patch: {
+				wikiGrants: [{ scope: "memory://", actions: ["read", "expand", "create", "update", "delete"] }],
+			},
+		});
+		const newRev = pubResult.newRevision;
+		expect(newRev, "publish must bump revision").toBeGreaterThan(initialRev);
+
+		// Boundary mechanism check (mid-step, before StepEnd): loop.config
+		// must STILL be the OLD revision; the patch is in pendingConfigPatches.
+		expect((loop as any).config.wikiAccess.policyRevision,
+			"§G.4 multi-call: loop.config.wikiAccess NOT swapped mid-step — still OLD revision",
+		).toBe(initialRev);
+		const pendingMidStep = (c.svc as any).pendingConfigPatches.get(sessionId) ?? [];
+		expect(pendingMidStep.length,
+			"§G.4 multi-call: publish enqueued patch on busy loop (pendingConfigPatches ≥ 1)",
+		).toBeGreaterThanOrEqual(1);
+
+		// Release latch[0] → call #0 returns; call #1 (whenever it spawned)
+		// now unblocks its top-of-execute wait on latch[0] and captures snapshot[1]
+		// from the STILL-OLD loop.config.wikiAccess (StepEnd has NOT fired yet —
+		// we are still inside step 1 because call #1 hasn't returned).
+		latches[0].resolve();
+
+		// Wait for call #1 to capture its snapshot, then release it.
+		await captureSignals[1].promise;
+		await waitFor(() => snapshots.length >= 2);
+		latches[1].resolve();
+
+		await runPromise;
+
+		// ── CORE ASSERTION ─────────────────────────────────────────────────
+		// Both tool calls within the SAME model step saw the SAME (OLD) revision.
+		// The publish done between them did NOT swap loop.config.mid-step.
+		expect(snapshots[0]!.policyRevision,
+			"§G.4 multi-call (a): call #0 snapshot is the OLD revision",
+		).toBe(initialRev);
+		expect(snapshots[1]!.policyRevision,
+			"§G.4 multi-call (b): call #1 snapshot is ALSO the OLD revision — " +
+			"single model step keeps one revision; publish deferred to StepEnd. " +
+			"If this fails with newRev, the publish path swapped loop.config " +
+			"mid-step (the P0-1 regression).",
+		).toBe(initialRev);
+		expect(snapshots[1]!.policyRevision,
+			"§G.4 multi-call (b)': sanity — call #1 must NOT see the NEW revision mid-step",
+		).not.toBe(newRev);
 	}, 30000);
 });
 
@@ -595,9 +769,9 @@ describe("acceptance-final §G.5-runtime — active project switch at safety bou
 
 		// (d) Mechanism: the project-switch path held the StepEnd boundary —
 		// loop.config.wikiAccess was STILL projectA immediately after switch
-		// (before StepEnd flush). This is the contrast vs the publishAgentWikiPolicy
-		// path (§G.4 finding) — sendProjectPrompt uses enqueueConfigPatch which
-		// queues; the patch only applies at StepEnd.
+		// (before StepEnd flush). After the P0-1 fix the publishAgentWikiPolicy
+		// path (§G.4) holds the SAME boundary — both paths route through
+		// enqueueConfigPatch; the patch only applies at StepEnd.
 		expect(configScopesMidCall,
 			"§G.5 mechanism: project-switch path holds StepEnd boundary — config still projectA right after switch",
 		).toContain(`wiki-root/projects/${projectA}`);

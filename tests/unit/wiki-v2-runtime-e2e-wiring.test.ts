@@ -468,7 +468,7 @@ describe("wiki-v2 e2e wiring [B7 对抗 lens] — compileWikiAccessForSession fi
 // ===========================================================================
 
 describe("wiki-v2 e2e wiring [B2 对抗 lens] — enqueueConfigPatch wired to onChange + memory archive", () => {
-	test("B2① onChange busy branch: agent wikiGrants change → applyConfigUpdate receives wikiAccess + dynamicSystemSections", async () => {
+	test("B2① onChange busy branch: agent wikiGrants change → enqueued patch carries wikiAccess + dynamicSystemSections (StepEnd flush)", async () => {
 		const c = buildSvc();
 		ctxHolder = c;
 		const agent = c.agentStore.create({
@@ -480,8 +480,10 @@ describe("wiki-v2 e2e wiring [B2 对抗 lens] — enqueueConfigPatch wired to on
 		} as any);
 
 		const applySpy = vi.fn();
-		// Stub loop + BUSY run-state → onChange takes the applyConfigUpdate branch
-		// (the round-2 B2①/B2④ wiki hot-sync path), not the idle rebuild branch.
+		// Stub loop + BUSY run-state → onChange routes through enqueueConfigPatch's
+		// BUSY branch (P0-1: patch enqueued for StepEnd flush, NOT applied
+		// synchronously), not the idle rebuild branch and not the idle
+		// immediate-apply branch.
 		(c.svc as any).loops.set("sess-b2", {
 			getConfigAgentId: () => agent.id,
 			applyConfigUpdate: applySpy,
@@ -497,11 +499,15 @@ describe("wiki-v2 e2e wiring [B2 对抗 lens] — enqueueConfigPatch wired to on
 			wikiGrants: [{ scope: "memory://", actions: ["read", "create"] }],
 		});
 
-		expect(applySpy).toHaveBeenCalledTimes(1);
-		const patch = applySpy.mock.calls[0][0];
-		// B2①: the busy branch must hot-sync BOTH wikiAccess and dynamicSystemSections.
-		expect(patch.wikiAccess, "onChange must hot-sync wikiAccess").toBeDefined();
-		expect(patch.dynamicSystemSections, "onChange must hot-sync dynamicSystemSections").toBeInstanceOf(Array);
+		// P0-1: busy loop → enqueue, no synchronous apply.
+		expect(applySpy, "busy loop applyConfigUpdate must NOT be called synchronously (StepEnd flush)").not.toHaveBeenCalled();
+		const queue = (c.svc as any).pendingConfigPatches.get("sess-b2") ?? [];
+		expect(queue.length, "busy loop patch must be enqueued to pendingConfigPatches").toBeGreaterThanOrEqual(1);
+		const patch = queue[queue.length - 1].update;
+		// B2①: the enqueued patch must carry BOTH wikiAccess and dynamicSystemSections
+		// (these are what StepEnd will apply to the loop).
+		expect(patch.wikiAccess, "enqueued patch must carry wikiAccess").toBeDefined();
+		expect(patch.dynamicSystemSections, "enqueued patch must carry dynamicSystemSections").toBeInstanceOf(Array);
 		expect(patch.dynamicSystemSections.length).toBeGreaterThan(0);
 		expect(patch.dynamicSystemSections[0].name).toBe("wiki-context");
 		// The new grant must reflect the updated wikiGrants (create action present).

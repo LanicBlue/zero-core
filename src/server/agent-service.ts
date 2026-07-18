@@ -362,19 +362,37 @@ export class AgentService implements PlatformObserver {
 
 			for (const [loopSessionId, loop] of this.loops.entries()) {
 				if (loop.getConfigAgentId() !== agentId) continue;
-				// wiki-system-redesign plan-05 §7 + round-2 B2①/B2④:agent record
-				// 变更(wikiGrants / wikiContext / wikiPolicyRevision 经 publish /
-				// AgentRegistry / UI 编辑)→ 重新编译 wiki access + section,热同步
-				// 到 busy loop。idle loop 已在上方 createLoopForSession 重建路径
-				// 走 compileWikiAccessForSession;此处是 busy 分支:applyConfigUpdate
-				// 透传 dynamicSystemSections + wikiAccess,AgentLoop 替换 section +
-				// invalidate("wiki-context")。其它字段仍走原 hot-sync。
+				// P0-1(bug fix)+ wiki-system-redesign plan-05 §7 + round-2 B2①/B2④:
+				// agent record 变更(wikiGrants / wikiContext / wikiPolicyRevision
+				// 经 publish / AgentRegistry / UI 编辑,以及任何 AgentRecord 驱动的
+				// SessionConfig 字段)→ 重新编译 wiki access + section,统一走
+				// enqueueConfigPatch 进入 StepEnd 安全边界。active session 的 idle
+				// 重建已由上方 createLoopForSession 路径完成(其中走
+				// compileWikiAccessForSession);此处覆盖剩余 loop(可能 busy,也
+				// 可能 per-loop idle —— 例如同 agentId 的非 active session)。
+				//
+				// P0-1 安全不变式:on a BUSY AgentLoop,任何 SessionConfig 变更必须
+				// 排队等 StepEnd flush,禁止 mid-step 改 loop.config。原因:(1) 同一
+				// model step 发出多个 tool call 时,所有 tool call 必须看到同一份
+				// policy/config revision;(2) in-flight tool call 的 CallerCtx 背后
+				// 的 loop.config 不能被换底。所以禁止在此直接调
+				// loop.applyConfigUpdate(patch) —— 那会破坏上述不变式。
+				//
+				// enqueueConfigPatch 内部按 loop.isWaiting()/getState().isBusy 决定:
+				// idle loop → 立即 applyConfigUpdate;busy loop → push 到
+				// pendingConfigPatches,由 config-sync StepEnd hook 在安全边界
+				// flush(见 flushPendingConfigPatch + config-sync-hooks)。同 agentId
+				// 的非 active session 即便 idle,也由 enqueueConfigPatch 处理(而非
+				// 上方 createLoopForSession 重建路径,那条只覆盖 active session)。
+				//
+				// wikiAccess / dynamicSystemSections 透传到 applyConfigUpdate,
+				// AgentLoop 据此替换 section + invalidate("wiki-context")。
 				const wikiUpdate = this.compileWikiAccessForSession(
 					agent,
 					loopSessionId,
 					this.activeProjectIdOfLoop(loopSessionId),
 				);
-				loop.applyConfigUpdate({
+				this.enqueueConfigPatch(loopSessionId, {
 					systemPrompt: agent.systemPrompt,
 					toolPolicy: agent.toolPolicy,
 					subagents: agent.subagents,

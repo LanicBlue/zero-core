@@ -220,6 +220,18 @@ function nextTick(n = 1): Promise<void> {
 	return p;
 }
 
+/** Poll until cond() returns true (or timeout). Used to deterministically wait
+ *  for fire-and-forget run() completion without racing on the publish path. */
+async function waitFor(cond: () => boolean, timeoutMs = 3000, intervalMs = 10): Promise<void> {
+	const start = Date.now();
+	while (!cond()) {
+		if (Date.now() - start > timeoutMs) {
+			throw new Error(`waitFor timed out after ${timeoutMs}ms (cond never became true)`);
+		}
+		await new Promise((r) => setTimeout(r, intervalMs));
+	}
+}
+
 /**
  * BLOCKER probe: are the grants endpoints blocked by the forged-identity guard
  * treating the legitimate `grants` payload field as a forged identity key?
@@ -854,6 +866,15 @@ describe("sub-07 §6 publish → session refresh runtime-alive [spec]", () => {
 		// Use context/publish (operational) to exercise the publish → onChange →
 		// loop.config.wikiAccess wiring. grants/publish is blocked (BLOCKER), so
 		// context.publish is the live path that proves §6 wiring is alive.
+		//
+		// P0-1: after the busy-loop StepEnd fix, a publish on an IDLE active
+		// session routes through the createLoopForSession rebuild (the loop is
+		// rebuilt with a fresh compileWikiAccessForSession); a publish on a BUSY
+		// session routes through enqueueConfigPatch → pendingConfigPatches →
+		// StepEnd flush. To keep this HTTP-path wiring test deterministic
+		// (avoid the busy/idle race inherent in fire-and-forget sendProjectPrompt)
+		// we wait for the loop to go idle, then publish, then re-fetch the
+		// (possibly rebuilt) loop reference and assert it carries the NEW rev.
 		const c = buildCtx(); ctxHolder = c;
 		const l = await listen(c.app); c.server = l.server; c.port = l.port;
 		const agent = c.agentStore.create({
@@ -870,6 +891,10 @@ describe("sub-07 §6 publish → session refresh runtime-alive [spec]", () => {
 		expect(loop, "sendProjectPrompt must register the loop").toBeDefined();
 		expect(loop.config.wikiAccess, "loop must start with compiled wikiAccess").toBeDefined();
 
+		// Wait for the fire-and-forget run() to finish so the publish below
+		// deterministically hits the IDLE rebuild branch (the race-free path).
+		await waitFor(() => !(c.agentService as any).runStates.get(sessionId)?.isBusy);
+
 		const rev = c.agentStore.get(agent.id)!.wikiPolicyRevision ?? 0;
 		// Publish a context entry via the admin router (real HTTP path).
 		const res = await post(c.port, "/api/wiki-admin/context/publish", {
@@ -879,10 +904,16 @@ describe("sub-07 §6 publish → session refresh runtime-alive [spec]", () => {
 		expect(res.status).toBe(200);
 		expect(res.data.result.newRevision).toBe(rev + 1);
 
-		// agentStore.update → onChange → compileWikiAccessForSession →
-		// loop.applyConfigUpdate({wikiAccess}). The loop's policyRevision must
-		// bump (wiring alive, not dead).
-		expect(loop.config.wikiAccess?.policyRevision, "running loop must see the bumped revision").toBe(rev + 1);
+		// agentStore.update → onChange → IDLE rebuild → createLoopForSession →
+		// compileWikiAccessForSession (NEW wikiAccess baked into the rebuilt
+		// loop's SessionConfig). The session's loop reference may have been
+		// replaced by the rebuild, so re-fetch before asserting. The loop's
+		// policyRevision must bump (wiring alive, not dead).
+		const loopAfter = (c.agentService as any).loops.get(sessionId);
+		expect(loopAfter, "session still has a loop after publish (rebuild)").toBeDefined();
+		expect(loopAfter.config.wikiAccess?.policyRevision,
+			"loop must reflect the bumped revision via the rebuild/apply path (wiring alive)",
+		).toBe(rev + 1);
 	}, 30000);
 
 	test("publish reports affectedSessions for the bound loop", async () => {

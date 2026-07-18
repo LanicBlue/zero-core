@@ -1018,7 +1018,7 @@ describe("sub-07 adv · §6 session refresh runtime-alive (not dead wiring)", ()
 	let h: Harness;
 	beforeEach(async () => { h = await buildHarnessAsync(); holder = h; });
 
-	test("§6 busy loop: publishAgentWikiPolicy triggers onChange → applyConfigUpdate with NEW wikiAccess reflecting new grants", async () => {
+	test("§6 busy loop: publishAgentWikiPolicy triggers onChange → enqueueConfigPatch (patch carries NEW wikiAccess; StepEnd flush)", async () => {
 		const agent = h.agentStore.create({
 			name: "busy-agent", provider: "MockProv", model: "sub07-mock",
 			toolPolicy: { tools: {} },
@@ -1046,26 +1046,30 @@ describe("sub-07 adv · §6 session refresh runtime-alive (not dead wiring)", ()
 			patch: { wikiGrants: [{ scope: "memory://", actions: ["read", "create", "update"] }] },
 		});
 
-		// The busy loop's applyConfigUpdate MUST have received a hot-sync
-		// patch carrying the NEW compiled wikiAccess (not the old one).
-		expect(applySpy, "busy loop applyConfigUpdate must be called on publish (runtime-alive)").toHaveBeenCalledTimes(1);
-		const patch = applySpy.mock.calls[0][0];
-		expect(patch.wikiAccess, "patch must include wikiAccess").toBeDefined();
+		// P0-1 (corrected): on a BUSY loop, applyConfigUpdate must NOT be
+		// called synchronously by publishAgentWikiPolicy. The patch is
+		// enqueued to pendingConfigPatches; the config-sync StepEnd hook
+		// will flush it at the safety boundary. (Out of scope for this unit
+		// test: we don't drive StepEnd here — we assert the queue side + the
+		// affectedSessions accounting.)
+		expect(applySpy, "busy loop applyConfigUpdate must NOT be called synchronously (StepEnd flush)").not.toHaveBeenCalled();
+		const queue = (h.svc as any).pendingConfigPatches.get("sess-busy") ?? [];
+		expect(queue.length, "busy loop patch must be enqueued to pendingConfigPatches").toBeGreaterThanOrEqual(1);
+		const patch = queue[queue.length - 1].update;
+		// The enqueued patch MUST carry the NEW compiled wikiAccess (not the
+		// old one) — this is what StepEnd will apply. The wiring is alive.
+		expect(patch.wikiAccess, "enqueued patch must include wikiAccess").toBeDefined();
 		const newActions = patch.wikiAccess.grants.find((g: any) =>
 			g.canonicalScope === `wiki-root/memory/${agent.id}`)?.actions ?? [];
 		// New grant includes create+update (the publish payload). This proves
 		// the patch reflects the NEW policy, not the stale one.
 		expect(newActions).toEqual(expect.arrayContaining(["read", "create", "update"]));
 
-		// affectedSessions must report this busy session. The onChange busy
-		// branch applies synchronously via applyConfigUpdate (NOT through
-		// pendingConfigPatches), so `applied=true` per the implementation's
-		// accounting. The in-flight CallerCtx reference is still unchanged
-		// (proven in the snapshot test below) — that is the actual safety
-		// boundary, NOT the applied flag.
+		// affectedSessions must report this busy session as PENDING (applied=false)
+		// because the patch is still queued for StepEnd flush.
 		const mine = result.affectedSessions.find((s) => s.sessionId === "sess-busy");
 		expect(mine, "busy session must be reported in affectedSessions").toBeDefined();
-		expect(mine?.applied).toBe(true);
+		expect(mine?.applied, "busy session must report applied=false (patch pending StepEnd flush)").toBe(false);
 	});
 
 	test("§6 idle loop: publishAgentWikiPolicy → applyConfigUpdate called; affectedSessions reports applied=true", async () => {
@@ -1468,10 +1472,12 @@ describe("sub-07 adv · A5 every admin mutation writes audit row", () => {
 			patch: { wikiGrants: [{ scope: "memory://", actions: ["read"] }] },
 		});
 		expect(out.newRevision, "service must return newRevision > 0").toBeGreaterThan(0);
-		// affectedSessions contains the session (onChange busy branch applied
-		// directly via applyConfigUpdate, so applied=true per the impl's accounting).
+		// P0-1: busy loop's patch is enqueued for StepEnd flush (not applied
+		// synchronously), so the affected-session entry reports applied=false.
+		// The router's audit-emit code records the array shape verbatim; this
+		// is the shape it would persist.
 		expect(out.affectedSessions, "service must return affectedSessions (impact summary source)")
-			.toContainEqual({ sessionId: "sess-audit", applied: true });
+			.toContainEqual({ sessionId: "sess-audit", applied: false });
 	});
 });
 

@@ -688,7 +688,7 @@ describe("sub-07 arch · session refresh wiring alive + [] fallback (§6)", () =
 		expect(agents.a1.wikiGrants).toEqual([]);
 	});
 
-	test("WIRING ALIVE: publish → agentStore.update → onChange → busy loop applyConfigUpdate fires", () => {
+	test("WIRING ALIVE: publish → agentStore.update → onChange → busy loop patch enqueued (StepEnd flush)", () => {
 		// feedback-verify-runtime-wiring 核心:链必须端到端真活,不能是 dead path。
 		// 注册 mock wikiService(compileWikiAccessForSession 要求 getWikiService() 非空)。
 		setWikiRuntime({
@@ -720,11 +720,17 @@ describe("sub-07 arch · session refresh wiring alive + [] fallback (§6)", () =
 			patch: { wikiGrants: [{ scope: "memory://", actions: ["read", "create"] }] },
 		});
 
-		// 链端到端真活:applyConfigUpdate 被调,wikiAccess 字段被推(BUSY 分支)。
-		expect(applySpy).toHaveBeenCalledTimes(1);
-		const patch = applySpy.mock.calls[0][0];
-		expect(patch.wikiAccess).toBeDefined();
-		expect(patch.wikiAccess.policyRevision).toBe(2);  // revision+1 真反映到 loop
+		// P0-1 (corrected): on a BUSY loop, applyConfigUpdate is NOT called
+		// synchronously by publishAgentWikiPolicy — the patch is enqueued to
+		// pendingConfigPatches and the config-sync StepEnd hook will flush it
+		// at the safety boundary. The wiring is alive: the patch reached the
+		// queue and carries the NEW compiled wikiAccess.
+		expect(applySpy, "busy loop applyConfigUpdate must NOT be called synchronously (StepEnd flush)").not.toHaveBeenCalled();
+		const queue = (svc as any).pendingConfigPatches.get("sess-1") ?? [];
+		expect(queue.length, "busy loop patch must be enqueued to pendingConfigPatches (wiring alive)").toBeGreaterThanOrEqual(1);
+		const patch = queue[queue.length - 1].update;
+		expect(patch.wikiAccess, "enqueued patch must include wikiAccess").toBeDefined();
+		expect(patch.wikiAccess.policyRevision).toBe(2);  // revision+1 真反映到 enqueued patch
 		_resetWikiRuntimeForTests();
 	});
 

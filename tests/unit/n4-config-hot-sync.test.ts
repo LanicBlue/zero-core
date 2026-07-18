@@ -211,7 +211,7 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 	beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "zero-n4-svc-")); db = new CoreDatabase(join(dir, "core.db")); runMigrations(db); });
 	afterEach(() => { try { db.close(); } catch { /* ignore */ } rmSync(dir, { recursive: true, force: true }); });
 
-	test("busy loop: changing model/provider/thinkingLevel forwards them to applyConfigUpdate", () => {
+	test("busy loop: changing model/provider/thinkingLevel enqueues patch (StepEnd flush, not synchronous apply)", () => {
 		const svc = new AgentService(dir, db);
 		const agentStore = new AgentStore(db);
 		// Wire the onChange listener onto the service (registers the callback
@@ -228,12 +228,16 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 		} as any);
 
 		// Inject a stub loop bound to this agent + a BUSY run-state so the
-		// onChange handler takes the applyConfigUpdate branch (not the idle
-		// rebuild branch). getConfigAgentId must match for the loop to qualify.
+		// onChange handler routes through enqueueConfigPatch's BUSY branch
+		// (queue for StepEnd flush), not the idle-immediate-apply branch and
+		// not the idle-rebuild branch. getConfigAgentId must match for the
+		// loop to qualify. isWaiting/getState are required by enqueueConfigPatch.
 		const applySpy = vi.fn();
 		const stubLoop = {
 			getConfigAgentId: () => agent.id,
 			applyConfigUpdate: applySpy,
+			isWaiting: () => false,
+			getState: () => ({ isBusy: true }), // BUSY
 		};
 		(svc as any).loops.set("sess-n4", stubLoop);
 		(svc as any).activeSessions.set(agent.id, "sess-n4");
@@ -246,8 +250,14 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 			thinkingLevel: "high",
 		});
 
-		expect(applySpy).toHaveBeenCalledTimes(1);
-		const patch = applySpy.mock.calls[0][0];
+		// P0-1 (corrected): busy loop's applyConfigUpdate is NOT called
+		// synchronously by onChange — the patch is enqueued to
+		// pendingConfigPatches and the config-sync StepEnd hook will flush it
+		// (out of scope for this unit test — we only assert the queue side).
+		expect(applySpy, "busy loop applyConfigUpdate must NOT be called synchronously (StepEnd flush)").not.toHaveBeenCalled();
+		const queue = (svc as any).pendingConfigPatches.get("sess-n4") ?? [];
+		expect(queue.length, "busy loop patch must be enqueued to pendingConfigPatches").toBeGreaterThanOrEqual(1);
+		const patch = queue[queue.length - 1].update;
 		// The three N4 fields come from the NEW agent record verbatim.
 		expect(patch.providerName).toBe("ProviderB");
 		expect(patch.modelId).toBe("model-C");
@@ -267,6 +277,9 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 		// guidance assumes `undefined`. This test pins the actual store behavior
 		// so the discrepancy is visible; resolving null-vs-undefined at the
 		// store boundary is out of scope for N4 (would be a separate fix).
+		//
+		// P0-1: on a BUSY loop the cleared-fields patch is ENQUEUED, not applied
+		// synchronously — read it back from pendingConfigPatches.
 		const svc = new AgentService(dir, db);
 		const agentStore = new AgentStore(db);
 		svc.setAgentStore(agentStore);
@@ -274,7 +287,12 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 		const agent = agentStore.create({ name: "n4-svc-agent-2", toolPolicy: { tools: {} } } as any);
 
 		const applySpy = vi.fn();
-		(svc as any).loops.set("sess-n4-2", { getConfigAgentId: () => agent.id, applyConfigUpdate: applySpy });
+		(svc as any).loops.set("sess-n4-2", {
+			getConfigAgentId: () => agent.id,
+			applyConfigUpdate: applySpy,
+			isWaiting: () => false,
+			getState: () => ({ isBusy: true }), // BUSY
+		});
 		(svc as any).activeSessions.set(agent.id, "sess-n4-2");
 		(svc as any).runStates.set("sess-n4-2", { isBusy: true });
 
@@ -282,8 +300,11 @@ describe("N4 · acceptance #6 agent-service store.onChange passes new fields to 
 		// were never set → the store yields null for them.
 		agentStore.update(agent.id, { name: "n4-svc-agent-2-renamed" });
 
-		expect(applySpy).toHaveBeenCalledTimes(1);
-		const patch = applySpy.mock.calls[0][0];
+		// P0-1: busy loop → enqueue, no synchronous apply.
+		expect(applySpy, "busy loop applyConfigUpdate must NOT be called synchronously (StepEnd flush)").not.toHaveBeenCalled();
+		const queue = (svc as any).pendingConfigPatches.get("sess-n4-2") ?? [];
+		expect(queue.length, "busy loop patch must be enqueued to pendingConfigPatches").toBeGreaterThanOrEqual(1);
+		const patch = queue[queue.length - 1].update;
 		expect(patch.providerName).toBeNull();
 		expect(patch.modelId).toBeNull();
 		expect(patch.thinkingLevel).toBeNull();
