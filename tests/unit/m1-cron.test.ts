@@ -49,13 +49,19 @@ let agentStore: AgentStore;
 let cronStore: CronStore;
 let zeroAdmin: ManagementService;
 
-// Stub AgentService that captures sendPrompt calls.
+// Stub AgentService that captures sendPrompt + sendProjectPrompt calls.
+// v0.8 archivist wiring (cron-analysis.ts:918-933): project-scoped crons route
+// through sendProjectPrompt; observation crons use sendPrompt. Both shapes are
+// captured so the routing tests can assert across both paths.
 function makeStubAgentService() {
 	const calls: Array<{ text: string; agentId?: string; sessionId?: string }> = [];
 	const svc = {
 		calls,
 		sendPrompt: vi.fn(async (text: string, agent?: any, sessionId?: string) => {
 			calls.push({ text, agentId: agent?.id, sessionId });
+		}),
+		sendProjectPrompt: vi.fn(async (agentId: string, sessionId: string, text: string) => {
+			calls.push({ text, agentId, sessionId });
 		}),
 	};
 	return svc;

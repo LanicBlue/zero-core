@@ -24,7 +24,6 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
 
 import { ZeroCoreConfigSchema, DEFAULT_CONFIG } from "../../src/core/config.js";
 import { CoreDatabase } from "../../src/server/core-database.js";
@@ -534,37 +533,35 @@ describe("[adversarial #1] ExtractorB instantiation status after buildExtractorB
 		).toEqual([]);
 	});
 
-	test("ExtractorBService is constructed ONLY in tests (now: NO test file)", () => {
-		// plan-08 §1 removed the legacy wiki tests (m5-extractors.test.ts
-		// among them) since they imported the deleted WikiStore. The class
-		// itself may still exist in src/, but no test constructs it now —
-		// the cross-check flips to "test file gone".
+	test("ExtractorBService is constructed ONLY in tests (m5-extractors)", () => {
+		// Cross-check: the test file m5-extractors.test.ts DOES construct it
+		// (so the class isn't dead-dead; it's just unused-in-production).
+		// Note: plan-08 §1 stripped the WikiStore import from m5-extractors
+		// (wiki-node-store was deleted) but kept the file — it still exercises
+		// ExtractorBService (12 cases, all green post-cutover).
 		const testFile = join(REPO_ROOT, "tests", "unit", "m5-extractors.test.ts");
-		expect(existsSync(testFile), "m5-extractors.test.ts was removed in plan-08 §1").toBe(false);
+		expect(existsSync(testFile), "m5-extractors.test.ts must still exist (kept post plan-08 §1)").toBe(true);
+		const src = readFileSync(testFile, "utf8");
+		const stripped = stripComments(src);
+		const hits = (stripped.match(/new\s+ExtractorBService\b/g) ?? []).length;
+		expect(hits, "m5-extractors.test.ts must still exercise ExtractorB (sub-5 keeps the class)").toBeGreaterThan(0);
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Adversarial #4 — net subtraction sanity (git diff --shortstat)
+// Adversarial #4 — net subtraction sanity (REMOVED post-sub-5-merge)
 // ---------------------------------------------------------------------------
+//
+// This block was a one-shot working-tree-shape probe authored during sub-5
+// implementation to confirm the diff matched a pure-subtraction profile
+// (≥1000 deletions, del ≥ 3× ins). It pinned a TRANSIENT state — the moment
+// sub-5 was committed (47ea41d) the assertion became meaningless, since the
+// current working tree no longer carries those deletions as uncommitted
+// changes. It has been failing on every clean checkout ever since (any tiny
+// working-tree diff produces ~tens of insertions, not 1000+ deletions).
+//
+// Pure-subtraction intent is now permanently encoded in git history
+// (47ea41d) — re-asserting it against the live working tree cannot succeed.
+// Removed rather than `test.skip`-ed because a skipped time-bounded probe
+// gives the false impression of a deferred contract.
 
-describe("[adversarial #4] net subtraction sanity", () => {
-	test("deletions >> insertions (pure-subtraction shape)", () => {
-		// git diff --shortstat HEAD (uncommitted = sub-5's working changes).
-		// Shape: "X files changed, N insertions(+), M deletions(-)".
-		const out = execSync("git diff --shortstat", { cwd: REPO_ROOT }).toString().trim();
-		expect(out, "git diff --shortstat must produce output").toMatch(/insertions|deletions/);
-
-		// Parse "<n> insertion(s)(+)" and "<m> deletion(s)(-)".
-		const insMatch = out.match(/(\d+)\s+insertion/);
-		const delMatch = out.match(/(\d+)\s+deletion/);
-		const ins = insMatch ? parseInt(insMatch[1], 10) : 0;
-		const del = delMatch ? parseInt(delMatch[1], 10) : 0;
-
-		// Sanity floor: the sub touched many files (deletions of 4 source files
-		// + ~20 modified). Pure subtraction ⇒ del >> ins.
-		expect(del, `deletions must be substantial (>= 1000 for this sub); got: ${out}`).toBeGreaterThanOrEqual(1000);
-		// 3x is a lenient floor — the real ratio is ~8x (1853/223 at writing).
-		expect(del, `deletions must outnumber insertions ≥ 3x (pure subtraction); got: ${out}`).toBeGreaterThan(ins * 3);
-	});
-});

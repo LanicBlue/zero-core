@@ -434,12 +434,23 @@ describe("Step 2E · A5: tool-call ↔ task link + subagent resume", () => {
 		expect(resumeInvocations, "resumeTask calls sub-loop.resume() exactly once").toBe(1);
 		expect(freshInvocations, "resumeTask must NOT re-invoke (sub-loop.run() untouched)").toBe(0);
 
-		// ── Assertion 4: the task row was NOT replaced (no new id, status
-		//    advanced to completed by the resume). ─────────────────────────
-		const rowAfter = db.getDelegatedTask(taskId)!;
-		expect(rowAfter.id, "same taskId after resume (no new delegation row)").toBe(taskId);
-		expect(rowAfter.status, "resume marks the task completed").toBe("completed");
-		expect(rowAfter.result, "resume result back-filled onto the task row").toBe("SUB-RESUMED-RESULT");
+		// ── Assertion 4: the task row was terminal-cleaned (resume marks the
+		//    task completed → fireOnTaskTerminal deletes the delegated_tasks
+		//    row so it stops re-seeding into restoreDelegatedTasks / the UI).
+		//    Pre-cleanup behavior (row surviving with status "completed") was
+		//    removed by archive-no-residual sub-2; resume still resolves the
+		//    result correctly (Assertion 2) — the row state is no longer
+		//    observable post-terminal. What we CAN still assert is that no
+		//    NEW delegation row was created (resume reuses taskId, doesn't
+		//    spawn a fresh task).
+		expect(db.getDelegatedTask(taskId), "terminal task row is deleted by fireOnTaskTerminal (no residual)").toBeUndefined();
+		const allRows = db.listDelegatedTasks?.() ?? [];
+		expect(allRows.find((r) => r.id === taskId), "no residual row with this taskId").toBeUndefined();
+		// And critically: resume did NOT mint a new delegation row (would
+		// appear here as a row with a different id pointing at the same
+		// sessionId). The stub createSubLoop never saw run() (Assertion 3),
+		// so structurally no new row can exist — assert it for clarity.
+		expect(allRows.filter((r) => r.sessionId === "2e-a5-sub-session"), "no new delegation row created on resume").length(0);
 	});
 
 	test("resumeTask throws for an unknown taskId (no silent re-invoke)", async () => {

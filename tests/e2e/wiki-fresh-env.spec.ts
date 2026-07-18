@@ -135,8 +135,11 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		// the 3 namespace children (knowledge / memory / projects). Caller must
 		// be authorized — we use the zero management agent which has wiki-root
 		// scope by default (fresh-db-seed gives zero the Wiki tool).
-		// Drive through the admin plane first to read addresses:
-		const addresses = await adminApi(port, "/api/wiki-admin/addresses/list");
+		// Drive through the admin plane first to read addresses.
+		// wiki-admin-router: POST /addresses/list (no body) →
+		// {ok:true, result:{addresses:[...]}}.
+		const addressesResp = await adminApi(port, "/api/wiki-admin/addresses/list", { method: "POST" });
+		const addresses = addressesResp.result.addresses;
 		// 3 static namespace addresses are bootstrapped by WikiAddressService seed
 		// (knowledge:// / memory:// / projects://) plus wiki-root canonical.
 		expect(Array.isArray(addresses)).toBe(true);
@@ -184,7 +187,10 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		// Bind the project root + repo. /api/wiki-admin/repositories/bind drives
 		// WikiProjectIndexer.ensureBinding under the hood — that's the formal
 		// management-plane entry point.
-		const binding = await adminApi(port, "/api/wiki-admin/repositories/bind", {
+		// wiki-admin-router: POST /repositories/bind body {projectId, sourceRoot?,
+		// defaultBranch?} → {ok:true, result:{projectId, repositoryId, ok,
+		// indexedRevision, syncStatus}}.
+		const bindingResp = await adminApi(port, "/api/wiki-admin/repositories/bind", {
 			method: "POST",
 			body: JSON.stringify({
 				projectId,
@@ -192,16 +198,24 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 				defaultBranch: "main",
 			}),
 		});
-		expect(binding.repositoryId || binding.ok || binding.projectNodePath).toBeTruthy();
+		const binding = bindingResp.result;
+		expect(binding.repositoryId).toBeTruthy();
+		expect(binding.projectId).toBe(projectId);
 
 		// Trigger full index — long-running, but bounded for a tiny repo.
 		// Loop on status until sync_status != 'indexing' (timeout 30s).
+		// wiki-admin-router: POST /repositories/status body {projectId} →
+		// {ok:true, result:{syncStatus, indexedRevision, ...}}. (repositories/list
+		// returns ALL bindings and takes no projectId filter — status is the
+		// per-project lookup.)
 		const deadline = Date.now() + 30_000;
 		let status: string = "indexing";
 		while (Date.now() < deadline) {
-			const list = await adminApi(port, `/api/wiki-admin/repositories/list?projectId=${projectId}`);
-			const entry = Array.isArray(list) ? list[0] : list;
-			status = entry?.syncStatus ?? entry?.sync_status ?? "unknown";
+			const statusResp = await adminApi(port, "/api/wiki-admin/repositories/status", {
+				method: "POST",
+				body: JSON.stringify({ projectId }),
+			});
+			status = statusResp.result?.syncStatus ?? "unknown";
 			if (status !== "indexing" && status !== "pending") break;
 			await new Promise((r) => setTimeout(r, 500));
 		}
@@ -209,9 +223,18 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 
 		// Verify the index actually produced wiki_nodes for src/index.ts by
 		// searching the data plane.
-		const search = await adminApi(port,
-			`/api/wiki/search?query=index.ts&mode=substring&target=wiki&limit=20`);
-		expect(search.items?.length ?? search.results?.length ?? 0).toBeGreaterThan(0);
+		// wiki-router: POST /wiki/search body {query, mode?, target?, limit?} →
+		// {ok:true, result:{wikiHits:[...], sourceHits:[...], ...}}.
+		const searchResp = await adminApi(port, "/api/wiki/search", {
+			method: "POST",
+			body: JSON.stringify({
+				query: "index.ts",
+				mode: "substring",
+				target: "wiki",
+				limit: 20,
+			}),
+		});
+		expect(searchResp.result.wikiHits.length).toBeGreaterThan(0);
 	});
 
 	// ─── Step 4: snapshot + verify + restore via /api/wiki-maintain ───
@@ -281,13 +304,15 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		const coreWalExistsBefore = existsSync(coreWal);
 		const coreWalSizeBefore = coreWalExistsBefore ? statBytes(coreWal) : 0;
 
-		// Force a wiki write through the data plane. /api/wiki POST create is the
+		// Force a wiki write through the data plane. /api/wiki/create POST is the
 		// formal entry; we need an authorized scope — wiki-root/knowledge is the
-		// default-readable namespace.
-		await adminApi(port, "/api/wiki", {
+		// default-readable namespace. wiki-router: POST /wiki/create body
+		// {parent, name, kind?, summary?, content?} → {ok:true, result: WikiNodeView}.
+		// (No `action` field — path segment selects the action; /api/wiki itself
+		// has no POST handler.)
+		await adminApi(port, "/api/wiki/create", {
 			method: "POST",
 			body: JSON.stringify({
-				action: "create",
 				parent: "wiki-root/knowledge",
 				name: `e2e-isolation-${Date.now()}`,
 				kind: "node",

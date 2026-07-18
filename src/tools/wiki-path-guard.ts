@@ -52,6 +52,7 @@ import {
 } from "../core/protected-paths.js";
 import { realpathSync } from "node:fs";
 import { existsSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 /**
  * Standard reject message returned to the agent when a path is blocked.
@@ -90,9 +91,22 @@ export function isWikiDiskPath(p: string, workingDir?: string): boolean {
  * where an attacker symlinks `workspace/wiki-bypass` → `~/.zero-core/wiki/`
  * (lexical path looks fine, real path is inside the protected root).
  *
- * Falls back to lexical-only check if the path doesn't exist yet (realpath
- * fails on missing files — but Write tool only creates files that don't yet
- * exist, so the lexical check covers the create case).
+ * Two resolution paths:
+ *   1. If the leaf EXISTS: `realpathSync(leaf)` follows terminal + in-path
+ *      links. Catches read/overwrite of an existing file via a junction.
+ *   2. If the leaf does NOT EXIST (Write-create of a new file): walk up to
+ *      the deepest existing ancestor dir, resolve THAT via realpathSync
+ *      (catches a junction anywhere along the path), then re-append the
+ *      non-existent suffix and run the lexical `isProtectedPath` against the
+ *      resolved ancestor. Without this branch, planting a new file inside a
+ *      directory junction into wiki/ / backups/ / db/ would silently pass —
+ *      an integrity-only bypass (fake wiki attachments / backup snapshots /
+ *      manifest JSON). plan-08 §2 follow-up; defense-in-depth.
+ *
+ * The lexical check at the top is a fast path for both cases — if the lexical
+ * path already resolves into a protected root (rare for attacks, common for
+ * legit workspace files whose ancestors all sit in the workspace), we return
+ * early without touching the disk.
  */
 export function isProtectedPathRealpath(p: string, workingDir?: string): boolean {
 	if (isProtectedPath(p, workingDir)) return true;
@@ -102,9 +116,41 @@ export function isProtectedPathRealpath(p: string, workingDir?: string): boolean
 	// canonicalize already lowercases on win32; realpathSync needs the original
 	// path form (with backslashes / mixed case), so use the raw input.
 	try {
-		if (!existsSync(p)) return false;
-		const real = realpathSync(p);
-		if (isProtectedPath(real, workingDir)) return true;
+		if (existsSync(p)) {
+			const real = realpathSync(p);
+			if (isProtectedPath(real, workingDir)) return true;
+			return false;
+		}
+		// Write-create path: leaf does not exist. Walk up to the deepest
+		// existing ancestor, resolve the ancestor via realpath (catches a
+		// junction sitting at any path segment), then re-append the missing
+		// suffix and check the resulting realpath-anchored path. Legit
+		// workspace creates have ancestors inside the workspace (realpath
+		// stays in the workspace → not protected); junction-into-protected
+		// creates resolve into the protected root → blocked.
+		const base = workingDir ?? process.cwd();
+		const abs = isAbsolute(p) ? p : resolve(base, p);
+		let existing = abs;
+		let rootReached = false;
+		while (!existsSync(existing)) {
+			const parent = dirname(existing);
+			if (parent === existing) { rootReached = true; break; }
+			existing = parent;
+		}
+		if (rootReached || !existsSync(existing)) return false;
+		let realAncestor: string;
+		try {
+			realAncestor = realpathSync(existing);
+		} catch {
+			return false;
+		}
+		// Re-append the non-existent tail. canonicalize (inside
+		// isProtectedPath) runs `normalize` + win32 slash/case fold, so
+		// mixing the ancestor's OS-native separator with the suffix's
+		// original separator is fine.
+		const suffix = abs.slice(existing.length);
+		const realLeaf = suffix ? realAncestor + suffix : realAncestor;
+		if (isProtectedPath(realLeaf, workingDir)) return true;
 		return false;
 	} catch {
 		return false;
