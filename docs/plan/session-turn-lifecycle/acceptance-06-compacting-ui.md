@@ -2,7 +2,8 @@
 
 对应 [Plan 06](plan-06-compacting-ui.md)。
 
-- [ ] compacting 是独立可见主状态，并显示 phase。
+- [ ] compacting 是独立可见主状态，显示 preparing/running/commit/blocked、Memory branch、
+  Compression branch 和 pass progress。
 - [ ] commit 不会因 Stop 留下半提交 cursor/context。
 - [ ] compacting 中 input/task event 不丢失，也不热切换当前上下文。
 - [ ] commit 后 Stop 优先于 queue/handoff。
@@ -23,6 +24,8 @@
 - [ ] HTTP initial snapshot、WS 增量与重连后的 revision 一致。
 - [ ] provider_runtime_changed 事件驱动首页刷新，轮询仅为断线兜底。
 - [ ] UI 不再从多个布尔事件自行推导权威状态。
+- [ ] Session Lifecycle 只拥有 supervisor/scheduler/safe-point/DTO；没有复制
+  memory-compaction-runtime 的 Snapshot、水位、runner、candidate 或双数据库提交算法。
 
 ## 首页布局与容量
 

@@ -35,7 +35,7 @@
 | 03 | [Inbox & Handoff](plan-03-inbox-handoff.md) | [Acceptance 03](acceptance-03-inbox-handoff.md) | 01–02 | invocation inbox、soft insert、atomic handoff |
 | 04 | [Wait & Background Barrier](plan-04-wait-background.md) | [Acceptance 04](acceptance-04-wait-background.md) | 01–03 | task event inbox、hard barrier、continuation |
 | 05 | [Provider Retry & Recovery](plan-05-provider-retry-recovery.md) | [Acceptance 05](acceptance-05-provider-retry-recovery.md) | 01–04 | transactional proposal、circuit、恢复控制合同 |
-| 06 | [Compacting & UI](plan-06-compacting-ui.md) | [Acceptance 06](acceptance-06-compacting-ui.md) | 01–05 | compacting、统一 snapshot、首页 Provider Control Center |
+| 06 | [Compacting & UI](plan-06-compacting-ui.md) | [Acceptance 06](acceptance-06-compacting-ui.md) | 01–05 | compacting branch contract、统一 lifecycle snapshot、首页 Provider Control Center |
 | 07 | [Cutover & Hardening](plan-07-cutover-hardening.md) | [Acceptance 07](acceptance-07-cutover-hardening.md) | 01–06 | 删除旧真相源、race/restart/E2E、文档 |
 
 全部通过后执行 [Final Acceptance](acceptance-final.md)。

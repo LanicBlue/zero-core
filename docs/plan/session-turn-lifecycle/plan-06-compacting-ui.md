@@ -7,8 +7,10 @@
 
 ## 工作
 
-1. compression coordinator 发布 memory/rewrite/commit phase。
-2. memory/rewrite cooperative cancel；commit 最小临界段 settle 后处理 Stop。
+1. compression coordinator 发布
+   `preparing → running(memory once || compression pass 1..N) → commit/blocked`，并为两个
+   branch 发布独立状态和 compression pass progress。
+2. preparing/running cooperative cancel；commit 最小临界段 settle 后处理 Stop。
 3. compacting 期间普通 invocation 入 inbox，task event 入 event inbox。
 4. commit 后严格按 Stop → handoff/queue → 原 Turn completion 顺序归并。
 5. UI 展示 running、waiting reason、needs_input、compacting phase、cancelling、queue paused/count、
@@ -24,6 +26,11 @@
     eligible key，展示 probing/succeeded/rejected，config_required 跳转 Provider Settings。
 11. Session/Task 详情只显示等待原因和“在首页查看”，不再提供第二个重试入口。
 12. 增加组件测试、WS reconnect、retry 防连点和 compact/Stop/input/task/provider 五方 race。
+13. 本阶段只建立 Session supervisor、Provider scheduler、safe-point、branch DTO 和 UI
+    contract；Snapshot、水位、MemoryRunner、CompressionPipeline、WikiPatch/SummaryCandidate
+    与双数据库提交算法由后续
+    [`memory-compaction-runtime`](../memory-compaction-runtime/README.md)实现，不能在本阶段
+    复制一套临时算法。
 
 ## 首页布局方案
 

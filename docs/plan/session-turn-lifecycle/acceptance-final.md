@@ -45,7 +45,7 @@
 
 ## 6. Compacting
 
-- [ ] UI 可见 memory/rewrite/commit。
+- [ ] UI 可见 preparing/running/commit/blocked、Memory/Compression branch 和 compression pass progress。
 - [ ] Stop、input、task event、Provider preview reset 与 commit 的竞争测试通过。
 - [ ] 不存在半提交 cursor/context。
 

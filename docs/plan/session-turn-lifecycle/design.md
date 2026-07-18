@@ -141,7 +141,20 @@ interface SessionRuntimeSnapshot {
     provider: string;
     model: string;
   };
-  compactionPhase?: "memory" | "rewrite" | "commit";
+  compaction?: {
+    cycleId: string;
+    trigger: "preferred" | "hard" | "manual";
+    phase: "preparing" | "running" | "commit" | "blocked";
+    memory: {
+      state: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      outcome?: "written" | "no_change";
+    };
+    compression: {
+      state: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      passIndex?: number;
+      passCount?: number;
+    };
+  };
   pendingAskUser?: { requestId: string; turnRunId: string };
   revision: number;
 }
@@ -611,15 +624,31 @@ REST/IPC error 不进入 Provider circuit。
 compacting 是 Session 主状态，并暴露 phase：
 
 ```text
-running → compacting(memory → rewrite → commit) → running/waiting/terminal
+running
+→ compacting(
+    preparing
+    → running(memory once || compression pass 1..N)
+    → commit
+  )
+→ running/waiting/terminal
 ```
 
-- memory/rewrite 阶段 cooperative cancel，可在进入 commit 前停止；
+- preparing/running 阶段 cooperative cancel，可在进入 commit 前停止；
 - commit 是最小不可中断临界段，Stop 只设置 `stopRequested`，commit settle 后再完成 cancellation；
 - 普通 invocation 在 compacting 期间入 inbox，不在中间替换上下文；
 - background task event 继续进入 Session Event Inbox；
 - commit 后先处理 Stop，再处理 handoff/queue，不能用旧 Turn completion 覆盖新状态；
-- UI 显示 compacting 和 phase，不伪装成普通 streaming 或 idle。
+- 任一分支在 hard gate 下失败时可以进入 `compacting(blocked)`，等待 Provider 恢复或显式
+  retry；Session Lifecycle 只拥有状态、取消、safe point 和投影，不定义 emergency
+  compression；
+- UI 显示 compacting、两个 branch 和 compression pass progress，不伪装成普通 streaming
+  或 idle。
+
+Memory/Compression 的 Snapshot、水位、一次 MemoryRun、多 pass CompressionPipeline、
+WikiPatch/SummaryCandidate 和双数据库提交算法由
+[`memory-compaction-runtime`](../memory-compaction-runtime/design.md)拥有。Session Lifecycle
+不得实现第二套算法；它只提供可被该 effort 消费的 supervisor、Provider scheduler、
+safe-point 和 commit 临界段合同。
 
 ## 11. 恢复与持久性
 
@@ -743,7 +772,7 @@ unavailable；ProviderRuntime 不得把这些实现复制成第二套 desktop ba
 | D8 | waiting 时新 user/Cron/Work invocation 可原子 handoff。 |
 | D9 | insert_now 只做 next-step 软插入。 |
 | D10 | 普通 chat queue 首版内存态；WorkRun/task delivery 可持久。 |
-| D11 | compacting 是 UI 可见主状态，commit 临界段不可破坏性中断。 |
+| D11 | compacting 是 UI 可见主状态，表达并行 memory/compression branches 与 pass progress；commit 临界段不可破坏性中断。 |
 | D12 | AskUser、Wait、provider/tool queue 共用 Turn cancellation tree。 |
 | D13 | Provider Runtime 拥有 error normalization、backoff、circuit、attempt 和恢复公平性。 |
 | D14 | Provider stream 只生成 provisional preview；成功后提交 immutable ModelStepProposal。 |

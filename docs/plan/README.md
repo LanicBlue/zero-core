@@ -14,6 +14,7 @@
 | [`wiki-system-redesign`](wiki-system-redesign/README.md) | 另一 worktree 实施中 | 只由既有实施工作继续 | 无 |
 | [`backend-io-scheduling`](backend-io-scheduling/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
 | [`session-turn-lifecycle`](session-turn-lifecycle/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
+| [`memory-compaction-runtime`](memory-compaction-runtime/README.md) | Ready，未实施 | 否 | Wiki Final + Session Lifecycle Final |
 | [`local-backend-security-boundary`](local-backend-security-boundary/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
 | [`project-flow-system`](project-flow-system/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
 | [`agent-work-runtime`](agent-work-runtime/README.md) | Ready，未实施 | 否 | Project Flow Final + Session Lifecycle Final |
@@ -31,6 +32,7 @@
 wiki-system-redesign FINAL + merge
 ├──→ backend-io-scheduling FINAL
 ├──→ session-turn-lifecycle FINAL ───────────┐
+│    └──→ memory-compaction-runtime FINAL     │
 ├──→ project-flow-system FINAL ──────────────┼──→ agent-work-runtime FINAL
 │                    │                       │             ├──→ agent-eval-harness FINAL ─┐
 │                    └──→ project-management-ui 00–03      └──→ UI Plan 04/06 ───────────┤
@@ -58,6 +60,9 @@ wiki-system-redesign FINAL + merge
 9. Backend I/O 是独立平台 effort，不是 Agent Project Automation Integration 的前置；
    它提供 maintenance job，而不是 WorkRun。若与 Session/Security 并行，后合并者按真实
    result 对齐共享 composition 文件。
+10. Memory Compaction Runtime 等待 Wiki 与 Session Lifecycle Final；前者提供双数据库和
+    Wiki patch/revision，后者提供 supervisor、Provider scheduler、compacting branch DTO、
+    safe point 和 commit 临界段。它不等待 Project Flow/Work/UI/Eval。
 
 ## 3. Wiki 合并后的推荐选择
 
@@ -67,6 +72,7 @@ wiki-system-redesign FINAL + merge
 |---|---|---|
 | Backend I/O Scheduling Plan 00 起 | 优先保证新 Wiki 的索引、迁移、归档不冻结 backend | 与 Security startup、Session archive 协调 owner；不全面替换 better-sqlite3 |
 | Session Lifecycle Plan 00 起 | 优先稳定 Runtime、Stop、Wait、Provider 恢复、后台任务和 UI 状态 | 会解除 Work Runtime 前置 |
+| Memory Compaction Runtime Plan 00 起 | Wiki 与 Session 均 Final | 先稳定 bypass/Provider priority/compaction，再开始其他共享 runtime 的 effort |
 | Project Flow System Plan 00 起 | 优先建立 `.zero-core`、多 Definition、Flow/关系图与工具 | 可与 Session 并行 |
 | Local Backend Security Plan 00 起 | 独立处理本机进程安全边界 | 可并行，但关注 server wiring 冲突 |
 | Agent Work Runtime Plan 00 起 | Flow 与 Session 均 Final | 不得重建 Flow 或 Session 状态机 |
@@ -81,6 +87,7 @@ wiki-system-redesign FINAL + merge
 Wiki merge
 → Backend I/O Scheduling
 → Session Lifecycle
+→ Memory Compaction Runtime
 → Project Flow System
 → Agent Work Runtime
 → Agent Eval Harness
@@ -99,6 +106,8 @@ Backend I/O、Project Flow 与 Session 的先后可按 owner 冲突调整；Eval
   Project UI 接口编码。
 - Session Lifecycle 与 Project Flow 可并行，但不得相互提前建立兼容层；Work Runtime
   Plan 00 以两者 Final 的真实接口统一接线。
+- Memory Compaction Runtime 等待 Session Final，可与 Project Flow 在独立 worktree 并行；
+  它与 Agent Work Runtime 共享 Provider/runtime/invocation 文件，默认不同时实施。
 - Backend I/O 与 Project Flow/Eval 无文件级核心重叠；与 Security 共享 server startup，
   与 Session 共享 archive integration。先合并者成为真实 baseline，后执行者不得恢复旧
   composition 或把 MaintenanceJob 合并进 SessionTaskEvent/WorkRun。
