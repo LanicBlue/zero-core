@@ -155,7 +155,15 @@ export default defineConfig({
 	// concerns, not parallelism-level concerns).
 	poolOptions: {
 		threads: {
-			maxThreads: 2,
+			// ROUND-3 (2026-07-18): maxThreads: 2 was STILL not deterministic —
+			// independent 2× runs surfaced flakes (sub4-archive-flow timeout +
+			// an interception `archiveSessionCalls` race: doMock/dynamic-import
+			// timing under 2-way contention). Per-file per-describe timeouts
+			// can't fix a non-timeout race, so drop to fully serial. Serial
+			// eliminates both SQLite/git contention AND cross-test module-state
+			// races. Cost: ~3-4× wall-clock (~350s vs ~100s) — acceptable for a
+			// deterministic gate (the reviewer §4.3 bar is 2× consecutive green).
+			maxThreads: 1,
 			minThreads: 1,
 		},
 	},

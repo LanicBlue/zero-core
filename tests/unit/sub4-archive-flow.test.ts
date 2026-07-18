@@ -392,6 +392,53 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 	// mocking AgentLoop + registerHooksForLoop just to make a temp loop
 	// constructible, and keeps the test focused on the DECISION predicate
 	// (which is what acceptance-4 #4 specifies).
+	//
+	// P1-3 round-4 (2026-07-18): FLAKE INVESTIGATION + FIX.
+	//
+	// SYMPTOM: under the threads pool (any maxThreads > 1) these two tests
+	// intermittently failed in two ways — (1) the cursor=null test timed out
+	// at 5000ms; (2) the cursor>=1 test failed with `archiveSessionCalls`
+	// length 1 got 2. Both are manifestations of ONE root cause.
+	//
+	// ROOT CAUSE (hypothesis (b) module-state bleed, confirmed by source
+	// trace): each test does `vi.doMock("archive-service")` + `vi.resetModules()`
+	// + dynamic `import("agent-service")`. agent-service.ts inside
+	// archiveOneSessionCascade does a dynamic `await import("./archive-service.js")`
+	// which resolves to the currently-registered mock. Under thread-pool
+	// contention (other test files loading in parallel workers) the dynamic
+	// import of agent-service's LARGE transitive graph (it pulls the whole
+	// runtime — AgentLoop, hooks, provider-factory, etc.) can exceed 5000ms.
+	// When that happens:
+	//   - vitest times out test 1 + runs its `finally` (doUnmock + resetModules).
+	//   - BUT the underlying archiveDelegatedSession promise is still pending
+	//     (vitest does NOT cancel promises on test timeout).
+	//   - test 2 starts; its setup calls `vi.resetModules()` again, which
+	//     invalidates the cached mock module that test 1's pending import was
+	//     about to resolve to. test 1's pending import then resolves to
+	//     test 2's freshly-registered mock factory → test 1's late
+	//     archiveSession call pushes to test 2's `archiveSessionCalls` array.
+	//   - test 2's own call also pushes → array length 2. ✗
+	// The "timeout" failure mode is just test 1 hitting the 5s budget while
+	// its dynamic import is still resolving.
+	//
+	// NOTE: at vitest maxThreads: 1 (current setting) this race is dormant
+	// because there's no concurrent load to slow the dynamic import — the
+	// 5s budget always suffices. The race is real and resurfaces the moment
+	// maxThreads is raised OR the test machine slows (CI, loaded build host).
+	// We harden anyway because the fix is cheap and the race is subtle.
+	//
+	// FIX:
+	//   1. Per-test timeout bumped to 15s for these two tests (large dynamic-
+	//      import graph under load = genuinely long I/O, NOT a race mask).
+	//   2. `interceptArchiveService` now returns a `stop()` closure that
+	//      freezes the capture — late calls (from a prior test's pending
+	//      promise bleeding through resetModules) get dropped instead of
+	//      polluting the array. Each test's `finally` calls `stop()` BEFORE
+	//      doUnmock/resetModules so the window is explicitly closed.
+	//   3. afterEach additionally flushes pending microtasks via two
+	//      `setImmediate` yields — if any tail work survived the test body,
+	//      it resolves into a stopped capture (no-op) rather than the next
+	//      test's capture.
 
 	let testDir: string;
 	let sessionDB: InstanceType<typeof CoreDatabaseCtor> | null = null;
@@ -400,7 +447,14 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 		testDir = mkdtempSync(join(tmpdir(), "zero-sub4-gap2-"));
 		sessionDB = new CoreDatabaseCtor(join(testDir, "core.db"));
 	});
-	afterEach(() => {
+	afterEach(async () => {
+		// Flush any tail microtasks/macrotasks that a prior test's pending
+		// archiveDelegatedSession might still be resolving. With the capture
+		// stopped (see finally in each test) these would be no-ops on the
+		// array, but we still want them settled before the next test starts
+		// so they can't race with the next test's doMock/resetModules cycle.
+		await new Promise<void>((r) => setImmediate(r));
+		await new Promise<void>((r) => setImmediate(r));
 		sessionDB?.close();
 		sessionDB = null;
 		try { rmSync(testDir, { recursive: true, force: true }); } catch { /* EPERM */ }
@@ -427,14 +481,37 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 		return { taskId, childSid };
 	}
 
-	/** Set up the archive-service dynamic-import mock and return calls capture. */
-	function interceptArchiveService(agentId: string) {
+	/**
+	 * Set up the archive-service dynamic-import mock. Returns the calls array
+	 * AND a `stop` closure that freezes the capture (subsequent pushes drop).
+	 *
+	 * The stop() guard is the belt-and-suspenders for the
+	 * vi.resetModules + dynamic-import race documented at the top of this
+	 * describe block: it ensures that even if a prior test's pending
+	 * archiveDelegatedSession leaks into THIS test's mock factory (because
+	 * resetModules forced re-resolution), its late archiveSession call gets
+	 * dropped instead of polluting this array. The PRIMARY fix is the
+	 * per-test timeout (prevents the leak in the first place); this is the
+	 * defense-in-depth.
+	 */
+	function interceptArchiveService(agentId: string): { calls: any[]; stop: () => void } {
 		const archiveSessionCalls: any[] = [];
+		// Module-level capture flag shared between the doMock factory closures
+		// (the factory may be re-invoked by vitest on resetModules, producing
+		// a new vi.fn each time; both instances close over the SAME flag +
+		// array, so the stop() toggle is honored regardless of which factory
+		// invocation created the vi.fn that's currently being called).
+		const capture = { active: true };
 		vi.doMock("../../src/server/archive-service.js", () => ({
 			archiveSession: vi.fn(async (_sid: string, _db: any, opts: any) => {
-				archiveSessionCalls.push({ sid: _sid, opts });
-				// Invoke the runner so we can observe what GAP2 picked.
-				if (typeof opts?.memoryTurnRunner === "function") {
+				if (capture.active) {
+					archiveSessionCalls.push({ sid: _sid, opts });
+				}
+				// Invoke the runner so we can observe what GAP2 picked. Only
+				// when capture is active — a late call from a prior test's
+				// leaked promise would otherwise run the (already-torn-down)
+				// runner and might trigger cascading async work.
+				if (capture.active && typeof opts?.memoryTurnRunner === "function") {
 					await opts.memoryTurnRunner();
 				}
 				return {
@@ -448,17 +525,23 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			ARCHIVES_ROOT: join(TMP, "archives"),
 			recoverInterruptedArchives: vi.fn(async () => 0),
 		}));
-		return archiveSessionCalls;
+		return {
+			calls: archiveSessionCalls,
+			stop: () => { capture.active = false; },
+		};
 	}
 
 	test("cursor === null → memory turn runner is the re-activate path (buildTempMemoryTurnRunner called) before export", async () => {
+		// timeout 15000: see describe-block top — agent-service's dynamic-import
+		// graph is large (whole runtime), can exceed the default 5s under
+		// thread-pool contention. This is long-I/O, not a race mask.
 		const agentId = "agt-gap2-short";
 		const { taskId, childSid } = seedDelegated(agentId);
 
 		// Lock precondition: child never compressed.
 		expect(sessionDB!.getCompressionCursor(childSid)).toBeNull();
 
-		const archiveSessionCalls = interceptArchiveService(agentId);
+		const { calls: archiveSessionCalls, stop } = interceptArchiveService(agentId);
 		try {
 			vi.resetModules();
 			const { AgentService } = await import("../../src/server/agent-service.js");
@@ -492,14 +575,19 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			const ret = await archiveSessionCalls[0].opts.memoryTurnRunner();
 			expect(ret).toBe(true);
 		} finally {
+			// Close the capture window BEFORE resetModules so any late call
+			// from THIS test's pending work (post-timeout, in a future test's
+			// mock factory) gets dropped instead of polluting that test.
+			stop();
 			vi.doUnmock("../../src/server/archive-service.js");
 			vi.resetModules();
 			archiveMod = await import("../../src/server/archive-service.js");
 			({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		}
-	});
+	}, 15000);
 
 	test("cursor >= 1 (already compressed) → buildTempMemoryTurnRunner NOT called; runner returns false", async () => {
+		// timeout 15000: see describe-block top — same dynamic-import cost.
 		const agentId = "agt-gap2-compressed";
 		const { taskId, childSid } = seedDelegated(agentId);
 
@@ -514,7 +602,7 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 		// Lock precondition: cursor is now non-null.
 		expect(sessionDB!.getCompressionCursor(childSid)).toBe(1);
 
-		const archiveSessionCalls = interceptArchiveService(agentId);
+		const { calls: archiveSessionCalls, stop } = interceptArchiveService(agentId);
 		try {
 			vi.resetModules();
 			const { AgentService } = await import("../../src/server/agent-service.js");
@@ -537,12 +625,13 @@ describe("sub-4 #4: GAP2 re-activate — cursor null → memory turn, cursor >=1
 			const ret = await runner();
 			expect(ret).toBe(false);
 		} finally {
+			stop();
 			vi.doUnmock("../../src/server/archive-service.js");
 			vi.resetModules();
 			archiveMod = await import("../../src/server/archive-service.js");
 			({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		}
-	});
+	}, 15000);
 
 	test("agent-service.archiveDelegatedSession decision predicate — source-level branch", () => {
 		// Adversarial source-grep: the GAP2 branch must read
