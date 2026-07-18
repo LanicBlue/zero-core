@@ -282,7 +282,13 @@ export class AgentService implements PlatformObserver {
 	 * 在安全边界调用 flushPendingConfigUpdate 取出并应用。
 	 *
 	 * 关键不变量:
-	 *   - 取出即清空 —— 每个 patch 只应用一次。
+	 *   - flush 不清空队列;清空由独立的 confirmPendingConfigApplied 在
+	 *     applyConfigUpdate 成功后调用(每个排队的 patch 至少有机会被 apply
+	 *     一次,apply 失败则整批留队列等下个 StepEnd 重试 —— 见
+	 *     flushPendingConfigPatch / config-sync-hooks)。
+	 *   - 多个 patch 按 flush 时浅合并:同字段后写覆盖前写,异字段都保留;
+	 *     整体替换字段(capabilities/wikiAccess/dynamicSystemSections 等)
+	 *     取最末值原样替换,不数组拼接、不深合并。
 	 *   - 通用 section patch,不含 Wiki 判断(hook + AgentService 都不识别
 	 *     section 名语义)。
 	 */
@@ -778,7 +784,8 @@ setPmService(pmService: any, requirementStore: any): void {
 
 	/**
 	 * plan-05 §7:把通用 config patch 排到队列。idle session 立即应用;busy
-	 * session 由 config-sync StepEnd hook 在安全边界 flush。
+	 * session 由 config-sync StepEnd hook 在安全边界 flush。多个 busy 期入队
+	 * 的 patch 在 flush 时按入队顺序浅合并(见 flushPendingConfigPatch)。
 	 */
 	private enqueueConfigPatch(sessionId: string, update: Record<string, unknown>): void {
 		const loop = this.loops.get(sessionId);
@@ -798,16 +805,43 @@ setPmService(pmService: any, requirementStore: any): void {
 	}
 
 	/**
-	 * plan-05 §7:flush pending patch(取出即清空)。config-sync hook 调用。
-	 * 返 null 表示无 pending。
+	 * plan-05 §7 / round-2 fix §3:peek + merge pending patches(不清空队列)。
+	 *
+	 * 把队列里所有 patch.update 按入队顺序浅合并到一个 update 对象:
+	 *   - 同字段 → 后写覆盖前写(取最末值)。
+	 *   - 异字段 → 全部保留(早 patch 的 systemPrompt/modelId/toolPolicy/
+	 *     capabilities 等不会被后到的 wiki-only patch 丢弃)。
+	 *   - 整体替换字段(dynamicSystemSections / capabilities / wikiAccess 等)
+	 *     取最末值原样替换 —— 不做数组拼接、不做深合并。Object.assign 的浅
+	 *     合并语义已经正确实现这点,这里只是显式确认 + 文档化。
+	 *
+	 * 不清空队列。清空由独立的 confirmPendingConfigApplied 在 applyConfigUpdate
+	 * 成功后调用;apply 失败则整批 patch 留队列等下个 StepEnd 重新 flush + apply
+	 * (applyConfigUpdate 是内存操作,不会持续失败,bounded 重试无损)。
+	 *
+	 * config-sync hook 调用。返 null 表示无 pending。
 	 */
 	private flushPendingConfigPatch(sessionId: string): { sessionId: string; update: Record<string, unknown> } | null {
 		const queue = this.pendingConfigPatches.get(sessionId);
 		if (!queue || queue.length === 0) return null;
-		// 取最末 patch(后写覆盖前写 —— 同字段以最新为准)。清空队列。
-		const last = queue[queue.length - 1];
+		const merged: Record<string, unknown> = {};
+		for (const patch of queue) {
+			// 浅合并:同字段后写覆盖前写;异字段都保留。整体替换字段
+			// (capabilities/wikiAccess/dynamicSystemSections 等)由此自然取
+			// 最末值 —— 与 applyConfigUpdate 单 patch 语义一致。
+			Object.assign(merged, patch.update);
+		}
+		return { sessionId, update: merged };
+	}
+
+	/**
+	 * plan-05 §7 / round-2 fix §3:确认 pending patch 已成功 apply,清空队列。
+	 *
+	 * config-sync hook 在 applyConfigUpdate 成功后调用;apply 失败时 hook 不调
+	 * 本方法,合并后的 patch 留在队列等下个 StepEnd 重新 flush + apply。
+	 */
+	private confirmPendingConfigApplied(sessionId: string): void {
 		this.pendingConfigPatches.set(sessionId, []);
-		return last;
 	}
 
 	/**
@@ -1033,6 +1067,7 @@ setPmService(pmService: any, requirementStore: any): void {
 	private registerConfigSyncHookForLoop(loop: AgentLoop, sessionId: string): void {
 		registerConfigSyncHooks(loop.registry, {
 			flushPendingConfigUpdate: (sid) => this.flushPendingConfigPatch(sid),
+			confirmPendingConfigApplied: (sid) => this.confirmPendingConfigApplied(sid),
 			resolveLoop: (sid) => sid === sessionId
 				? { applyConfigUpdate: (u: Record<string, unknown>) => loop.applyConfigUpdate(u as any) }
 				: null,

@@ -80,6 +80,9 @@ import { AgentLoop } from "../../src/runtime/agent-loop.js";
 // Turn-start/end persistence: needed so run()'s refreshTurnsCache() finds the
 // user step (else messages go empty → streamText "messages must not be empty").
 import { registerTurnHooks } from "../../src/runtime/hooks/turn-hooks.js";
+// round-2 fix §3: drive config-sync hook directly for focused merge tests.
+import { registerConfigSyncHooks } from "../../src/runtime/hooks/config-sync-hooks.js";
+import { HookRegistry } from "../../src/core/hook-registry.js";
 import { WikiDatabase } from "../../src/server/wiki/wiki-database.js";
 import { WikiService } from "../../src/server/wiki/wiki-service.js";
 import { WikiNodeRepository } from "../../src/server/wiki/wiki-node-repository.js";
@@ -779,4 +782,547 @@ describe("acceptance-final §G.5-runtime — active project switch at safety bou
 			"§G.5 mechanism: project-switch path holds StepEnd boundary — config NOT projectB right after switch",
 		).not.toContain(`wiki-root/projects/${projectB}`);
 	}, 30000);
+});
+
+// ===========================================================================
+// round-2 review fix §3 — flushPendingConfigPatch merge + confirm-on-success
+//
+// These tests exercise the production config-sync StepEnd hook + AgentService's
+// real flushPendingConfigPatch / confirmPendingConfigApplied primitives. Cases
+// 1, 2, 3, 4, 6, 7, 8 drive the hook directly via a hand-built harness (no
+// heavy AgentLoop fixture). Case 5 (mid-tool-call multi-enqueue) reuses the
+// §G.4-style Block-tool AgentLoop harness.
+//
+// Source of truth:
+//   - src/server/agent-service.ts: flushPendingConfigPatch (peek+merge),
+//     confirmPendingConfigApplied (clear), enqueueConfigPatch (busy → queue),
+//     pendingConfigPatches Map.
+//   - src/runtime/hooks/config-sync-hooks.ts: StepEnd hook = flush → apply →
+//     confirm-on-success.
+// ===========================================================================
+
+/**
+ * Build a minimal merge-test harness: real AgentService (its private
+ * pendingConfigPatches / flushPendingConfigPatch / confirmPendingConfigApplied
+//  are exercised), a fresh HookRegistry with the REAL config-sync StepEnd hook
+ * registered, and a FAKE loop whose applyConfigUpdate records every call +
+ * can be made to throw once. Tests push patches directly to the queue (mirrors
+ * what enqueueConfigPatch does on a busy loop) and trigger StepEnd manually.
+ */
+function buildMergeHarness(args: {
+	sessionId?: string;
+	applyShouldThrowOnce?: boolean;
+} = {}): {
+	svc: AgentService;
+	registry: HookRegistry;
+	sessionId: string;
+	appliedUpdates: Array<Record<string, unknown>>;
+	setApplyThrowOnce: (v: boolean) => void;
+	applyCallCount: () => number;
+} {
+	const c = buildSvc();
+	ctxHolder = c;
+	const sessionId = args.sessionId ?? `merge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	const registry = new HookRegistry();
+	const appliedUpdates: Array<Record<string, unknown>> = [];
+	let throwOnce = !!args.applyShouldThrowOnce;
+	let applyCallCount = 0;
+	const fakeLoop = {
+		applyConfigUpdate(update: Record<string, unknown>) {
+			applyCallCount++;
+			if (throwOnce) {
+				throwOnce = false;
+				throw new Error("mock apply failure");
+			}
+			appliedUpdates.push(update);
+		},
+	};
+	// Register the REAL production hook against this registry. flush/confirm
+	// go through AgentService's real private methods (peek+merge / clear) so
+	// we test the production primitives end-to-end with the hook wiring.
+	registerConfigSyncHooks(registry, {
+		flushPendingConfigUpdate: (sid) => (c.svc as any).flushPendingConfigPatch(sid),
+		confirmPendingConfigApplied: (sid) => (c.svc as any).confirmPendingConfigApplied(sid),
+		resolveLoop: (sid) => (sid === sessionId ? fakeLoop : null),
+	});
+	return {
+		svc: c.svc,
+		registry,
+		sessionId,
+		appliedUpdates,
+		setApplyThrowOnce: (v: boolean) => { throwOnce = v; },
+		applyCallCount: () => applyCallCount,
+	};
+}
+
+/**
+ * Push a patch to AgentService.pendingConfigPatches (same shape enqueueConfigPatch
+ * pushes on a busy loop). Direct map mutation — bypasses the idle/busy branch
+ * so we can test the queue+hook+merge in isolation.
+ */
+function enqueuePending(svc: AgentService, sessionId: string, update: Record<string, unknown>): void {
+	const map = (svc as any).pendingConfigPatches as Map<string, Array<{ sessionId: string; update: Record<string, unknown> }>>;
+	const queue = map.get(sessionId) ?? [];
+	queue.push({ sessionId, update });
+	map.set(sessionId, queue);
+}
+
+function peekQueue(svc: AgentService, sessionId: string): Array<{ sessionId: string; update: Record<string, unknown> }> {
+	return ((svc as any).pendingConfigPatches as Map<string, Array<{ sessionId: string; update: Record<string, unknown> }>>).get(sessionId) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// §3.1 — full-then-wiki-only merge (the regression that motivated this fix)
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.1 — full-then-wiki-only: full patch fields preserved", () => {
+	test("at StepEnd, applied update keeps systemPrompt/modelId/toolPolicy; wikiAccess@3 wins; dynamicSystemSections included", async () => {
+		const h = buildMergeHarness();
+		const wikiAccess2 = { policyRevision: 2, grants: [{ canonicalScope: "wiki-root/memory", actions: ["read"] }] };
+		const wikiAccess3 = { policyRevision: 3, grants: [{ canonicalScope: "wiki-root/memory", actions: ["read", "expand"] }] };
+		const dynamicSections = [{ name: "wiki-context", compute: (): string => "x", cacheBreak: true }];
+
+		// 1) FULL SessionConfig patch.
+		enqueuePending(h.svc, h.sessionId, {
+			systemPrompt: "full-prompt",
+			modelId: "full-model",
+			toolPolicy: { tools: { Wiki: { enabled: true } } },
+			capabilities: { management: {} },
+			wikiAccess: wikiAccess2,
+		});
+		// 2) Wiki-only patch (different fields + overwrites wikiAccess).
+		enqueuePending(h.svc, h.sessionId, {
+			wikiAccess: wikiAccess3,
+			dynamicSystemSections: dynamicSections,
+		});
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		expect(h.appliedUpdates.length, "exactly one applyConfigUpdate call after StepEnd").toBe(1);
+		const applied = h.appliedUpdates[0]!;
+		// Early (full) patch's unique fields survive.
+		expect(applied.systemPrompt, "systemPrompt from full patch preserved").toBe("full-prompt");
+		expect(applied.modelId, "modelId from full patch preserved").toBe("full-model");
+		expect(applied.toolPolicy, "toolPolicy from full patch preserved").toEqual({ tools: { Wiki: { enabled: true } } });
+		expect(applied.capabilities, "capabilities from full patch preserved").toEqual({ management: {} });
+		// wikiAccess: last wins (wiki-only's @3, not full's @2).
+		expect(applied.wikiAccess, "wikiAccess is the LAST (wiki-only's @3) verbatim — same reference").toBe(wikiAccess3);
+		expect((applied.wikiAccess as any).policyRevision, "wikiAccess policyRevision is 3 (last wins)").toBe(3);
+		// dynamicSystemSections from the wiki-only patch included.
+		expect(applied.dynamicSystemSections, "dynamicSystemSections from wiki-only patch included").toBe(dynamicSections);
+		// Queue cleared on successful apply+confirm.
+		expect(peekQueue(h.svc, h.sessionId).length, "queue cleared after successful apply+confirm").toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.2 — wiki-only-then-full (reverse order): full overwrites shared fields;
+//        wiki-only's unique fields (dynamicSystemSections) survive.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.2 — wiki-only-then-full: full overwrites shared; wiki-only unique survives", () => {
+	test("at StepEnd, full's systemPrompt/modelId/toolPolicy overwrite; wikiAccess is full's (@5); dynamicSystemSections from wiki-only survives", async () => {
+		const h = buildMergeHarness();
+		const wikiAccess3 = { policyRevision: 3, grants: [] };
+		const wikiAccess5 = { policyRevision: 5, grants: [{ canonicalScope: "wiki-root/memory", actions: ["read"] }] };
+		const dynamicSections = [{ name: "wiki-context", compute: (): string => "y", cacheBreak: true }];
+
+		// 1) Wiki-only patch.
+		enqueuePending(h.svc, h.sessionId, {
+			wikiAccess: wikiAccess3,
+			dynamicSystemSections: dynamicSections,
+		});
+		// 2) Full patch (overwrites wikiAccess; adds systemPrompt/modelId).
+		enqueuePending(h.svc, h.sessionId, {
+			systemPrompt: "full-prompt",
+			modelId: "full-model",
+			toolPolicy: { tools: { Wiki: { enabled: true } } },
+			capabilities: { management: {} },
+			wikiAccess: wikiAccess5,
+		});
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		const applied = h.appliedUpdates[0]!;
+		expect(applied.systemPrompt, "full overwrites systemPrompt").toBe("full-prompt");
+		expect(applied.modelId, "full overwrites modelId").toBe("full-model");
+		expect(applied.toolPolicy, "full overwrites toolPolicy").toEqual({ tools: { Wiki: { enabled: true } } });
+		expect(applied.capabilities, "full overwrites capabilities").toEqual({ management: {} });
+		// wikiAccess: last (full's @5) wins.
+		expect((applied.wikiAccess as any).policyRevision, "wikiAccess is full's @5 (last wins)").toBe(5);
+		expect(applied.wikiAccess, "wikiAccess is full's reference (last wins)").toBe(wikiAccess5);
+		// dynamicSystemSections from wiki-only survives (full didn't set it).
+		expect(applied.dynamicSystemSections, "dynamicSystemSections from wiki-only survives (full didn't overwrite)").toBe(dynamicSections);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.3 — 3+ patches, same field last-write-wins; all unique fields survive.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.3 — 3+ patches: last-write-wins for shared field, uniques survive", () => {
+	test("three patches writing modelId=A/B/C → applied modelId is C; each patch's unique fields survive", async () => {
+		const h = buildMergeHarness();
+		enqueuePending(h.svc, h.sessionId, { modelId: "A", systemPrompt: "p1" });
+		enqueuePending(h.svc, h.sessionId, { modelId: "B", toolPolicy: { tools: { Read: { enabled: true } } } });
+		enqueuePending(h.svc, h.sessionId, { modelId: "C", providerName: "P" });
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		const applied = h.appliedUpdates[0]!;
+		expect(applied.modelId, "last-write-wins for shared field modelId").toBe("C");
+		expect(applied.systemPrompt, "unique field from patch 1 survives").toBe("p1");
+		expect(applied.toolPolicy, "unique field from patch 2 survives").toEqual({ tools: { Read: { enabled: true } } });
+		expect(applied.providerName, "unique field from patch 3 survives").toBe("P");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.4 — second flush returns null after successful apply+confirm.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.4 — second flush returns null after successful apply+confirm", () => {
+	test("queue cleared exactly once on success; subsequent flush / StepEnd are no-ops", async () => {
+		const h = buildMergeHarness();
+		enqueuePending(h.svc, h.sessionId, { modelId: "X" });
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		expect(h.appliedUpdates.length, "precondition: first StepEnd applied once").toBe(1);
+		expect(peekQueue(h.svc, h.sessionId).length, "precondition: queue cleared after success").toBe(0);
+
+		// Direct flush returns null (queue empty).
+		expect(
+			(h.svc as any).flushPendingConfigPatch(h.sessionId),
+			"direct flushPendingConfigPatch on empty queue returns null",
+		).toBeNull();
+
+		// Second StepEnd is a noop (no apply, no confirm).
+		const applyCallsBefore = h.applyCallCount();
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+		expect(h.applyCallCount(), "second StepEnd did NOT call applyConfigUpdate").toBe(applyCallsBefore);
+		expect(h.appliedUpdates.length, "second StepEnd did not record a new apply").toBe(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.5 — mid-tool-call multi-enqueue (reuses AgentLoop Block-tool fixture).
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.5 — mid-tool-call multi-enqueue: current step sees OLD, next step sees MERGED", () => {
+	test("two mid-step enqueues: both step-1 tool calls see OLD revision; step-2 sees MERGED fields (modelId + wikiAccess@12)", async () => {
+		const c = buildSvc();
+		ctxHolder = c;
+		const agent = c.agentStore.create({
+			name: "merge-mid-agent",
+			provider: "Mock",
+			model: "mock-boundary",
+			toolPolicy: { tools: {} },
+			wikiGrants: [{ scope: "memory://", actions: ["read", "expand"] }],
+			wikiPolicyRevision: 11,
+		} as any);
+
+		const sessionId = `merge-mid-${Date.now()}`;
+		const initial = (c.svc as any).compileWikiAccessForSession(agent, sessionId, undefined);
+		expect(initial.wikiAccess, "precondition: initial wikiAccess compiled").toBeDefined();
+		const initialRev: number = initial.wikiAccess.policyRevision;
+		expect(initialRev, "precondition: compiled policyRevision matches agent record").toBe(11);
+
+		const latches = [new Latch(), new Latch()];
+		const captureSignals = [makeCaptureSignal(), makeCaptureSignal(), makeCaptureSignal()];
+		const snapshots: Array<CompiledWikiAccess | undefined> = [];
+
+		// Multi-call Block tool. Idx 0 (step 1 call 1) captures immediately then
+		// awaits latch[0]. Idx 1 (step 1 call 2) waits on latch[0] before
+		// capturing (so its snapshot is taken AFTER the test's mid-step enqueue
+		// but BEFORE StepEnd fires — both still in step 1). Idx 2 (step 2 call)
+		// captures immediately and returns (no latch).
+		let nextIdx = -1;
+		const blockTool = tool({
+			description: "Multi-call Block for §3.5 merge test",
+			inputSchema: z.object({}),
+			execute: async (_input: any, opts: any) => {
+				const idx = ++nextIdx;
+				const host = opts?.experimental_context;
+				const buildCallerCtx = (host && typeof host === "object" && "buildCallerCtx" in host)
+					? (host as { buildCallerCtx: (id: string) => any }).buildCallerCtx
+					: null;
+				const toolCallId = (opts?.toolCallId ?? opts?.id ?? "") as string;
+
+				if (idx === 1) {
+					// Wait for the test to release latch[0] (= test has enqueued
+					// its two patches + released call #0). We then capture from
+					// loop.config.wikiAccess — still OLD (StepEnd has NOT fired
+					// because call #1 hasn't returned yet).
+					await latches[0].getPromise();
+				}
+
+				const callerCtx = buildCallerCtx ? buildCallerCtx(toolCallId) : null;
+				const access: CompiledWikiAccess | undefined = callerCtx?.wikiAccess;
+				snapshots.push(access);
+				captureSignals[idx]?.resolve();
+
+				if (idx < 2) {
+					// Step-1 calls await their latch so the test controls release
+					// timing precisely. Idx 0 awaits latch[0]; idx 1 awaits
+					// latch[1]. Both must return before step 1 StepEnd fires.
+					await latches[idx].getPromise();
+				}
+				// Idx 2 (step 2) returns immediately.
+				return "ok";
+			},
+		});
+
+		const loop = buildAndRegisterLoop({
+			svc: c.svc, agentId: agent.id, sessionId, workspaceDir: c.dir,
+			wikiAccess: initial.wikiAccess, wikiContextSection: initial.dynamicSection,
+			blockTool,
+		});
+
+		// Step 1 emits TWO Block tool calls (single step → both must see the
+		// SAME OLD revision). Step 2 emits ONE Block call (must see MERGED).
+		// Step 3 ends the turn with text.
+		resolveModelMock.mockReturnValue(createMockModel({
+			steps: [
+				[
+					{ type: "tool-call", toolName: "Block", input: {} },
+					{ type: "tool-call", toolName: "Block", input: {} },
+					{ type: "finish", finishReason: "tool-calls" },
+				],
+				[
+					{ type: "tool-call", toolName: "Block", input: {} },
+					{ type: "finish", finishReason: "tool-calls" },
+				],
+				[{ type: "text", text: "done" }, { type: "finish", finishReason: "stop" }],
+			],
+		}));
+
+		const runPromise = loop.run("go");
+
+		// Wait for call #0 to capture (now awaiting latch[0]).
+		await captureSignals[0].promise;
+		await waitFor(() => snapshots.length >= 1);
+		expect(snapshots[0], "precondition: call #0 captured a snapshot").toBeDefined();
+		expect(snapshots[0]!.policyRevision, "precondition: call #0 (pre-enqueue) sees OLD revision").toBe(initialRev);
+
+		// ── MID-STEP: enqueue TWO patches via the production enqueueConfigPatch
+		//    path (busy loop → both land in pendingConfigPatches). Patch 1 sets
+		//    modelId; patch 2 sets wikiAccess@12. The merge must combine both.
+		(c.svc as any).enqueueConfigPatch(sessionId, { modelId: "merged-model" });
+		const rev12Access = { ...initial.wikiAccess, policyRevision: 12 };
+		(c.svc as any).enqueueConfigPatch(sessionId, { wikiAccess: rev12Access });
+
+		const pendingAfterEnqueue = (c.svc as any).pendingConfigPatches.get(sessionId) ?? [];
+		expect(pendingAfterEnqueue.length,
+			"§3.5 mechanism: both mid-step patches enqueued on busy loop (pendingConfigPatches = 2)",
+		).toBe(2);
+
+		// Boundary invariant: loop.config mid-step is STILL the OLD values
+		// (no mid-step swap).
+		expect((loop as any).config.modelId,
+			"§3.5 boundary: loop.config.modelId NOT swapped mid-step",
+		).toBe("mock-boundary");
+		expect((loop as any).config.wikiAccess.policyRevision,
+			"§3.5 boundary: loop.config.wikiAccess.policyRevision NOT swapped mid-step (still 11)",
+		).toBe(initialRev);
+
+		// Release latch[0] → call #0 returns; call #1 (was awaiting latch[0])
+		// unblocks and captures from loop.config (STILL OLD — StepEnd has not
+		// fired; we're still inside step 1 because call #1 hasn't returned yet).
+		latches[0].resolve();
+		await captureSignals[1].promise;
+		await waitFor(() => snapshots.length >= 2);
+
+		// Call #1's snapshot must be the OLD revision (snapshot invariant).
+		expect(snapshots[1]!.policyRevision,
+			"§3.5 (a): call #1 snapshot is OLD revision — single model step keeps one revision",
+		).toBe(initialRev);
+
+		// Release latch[1] → call #1 returns → step 1 StepEnd fires → config-sync
+		// hook flushes the merged patch → loop.config now has merged fields.
+		latches[1].resolve();
+
+		// Wait for call #2 (step 2) to capture the MERGED snapshot.
+		await captureSignals[2].promise;
+		await waitFor(() => snapshots.length >= 3);
+
+		// Call #2 (next step) sees the MERGED wikiAccess (policyRevision=12).
+		expect(snapshots[2]!.policyRevision,
+			"§3.5 (b): next-step snapshot reflects MERGED wikiAccess (rev 12)",
+		).toBe(12);
+
+		// Let the run finish (step 2 StepEnd + step 3 text+finish).
+		await runPromise;
+
+		// After run: loop.config.modelId has been swapped to the MERGED value.
+		expect((loop as any).config.modelId,
+			"§3.5 (c): loop.config.modelId reflects MERGED patch ('merged-model') after StepEnd",
+		).toBe("merged-model");
+
+		// Queue cleared after successful apply+confirm.
+		expect(peekQueue(c.svc, sessionId).length,
+			"§3.5 (d): pendingConfigPatches cleared after successful apply+confirm at StepEnd",
+		).toBe(0);
+	}, 30000);
+});
+
+// ---------------------------------------------------------------------------
+// §3.6 — cross-session isolation: StepEnd on A applies only A's merged patch;
+//        B's queue untouched.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.6 — cross-session isolation", () => {
+	test("StepEnd on sessionA applies A's merged patch only; sessionB's queue untouched", async () => {
+		const c = buildSvc();
+		ctxHolder = c;
+		const sessionA = `iso-A-${Date.now()}`;
+		const sessionB = `iso-B-${Date.now()}`;
+		const registry = new HookRegistry();
+		const appliedUpdates: Array<{ sessionId: string; update: Record<string, unknown> }> = [];
+		const fakeLoopA = {
+			applyConfigUpdate(update: Record<string, unknown>) {
+				appliedUpdates.push({ sessionId: sessionA, update });
+			},
+		};
+		registerConfigSyncHooks(registry, {
+			flushPendingConfigUpdate: (sid) => (c.svc as any).flushPendingConfigPatch(sid),
+			confirmPendingConfigApplied: (sid) => (c.svc as any).confirmPendingConfigApplied(sid),
+			resolveLoop: (sid) => (sid === sessionA ? fakeLoopA : null),
+		});
+
+		// Enqueue on BOTH sessions.
+		enqueuePending(c.svc, sessionA, { modelId: "A1", systemPrompt: "pA" });
+		enqueuePending(c.svc, sessionA, { modelId: "A2" });
+		enqueuePending(c.svc, sessionB, { modelId: "B1" });
+		enqueuePending(c.svc, sessionB, { modelId: "B2", toolPolicy: { tools: {} } });
+
+		// StepEnd on A only.
+		await registry.trigger("StepEnd", { sessionId: sessionA });
+
+		// A's patch applied (merged).
+		expect(appliedUpdates.length, "exactly one apply on sessionA").toBe(1);
+		expect(appliedUpdates[0]!.update.modelId, "A merged: last modelId wins").toBe("A2");
+		expect(appliedUpdates[0]!.update.systemPrompt, "A merged: systemPrompt preserved").toBe("pA");
+
+		// A's queue cleared.
+		expect(peekQueue(c.svc, sessionA).length, "A queue cleared after apply+confirm").toBe(0);
+
+		// B's queue UNTOUCHED (still has 2 patches in original order).
+		const bQueue = peekQueue(c.svc, sessionB);
+		expect(bQueue.length, "B queue untouched by A's StepEnd").toBe(2);
+		expect(bQueue[0]!.update.modelId, "B queue[0] unchanged").toBe("B1");
+		expect(bQueue[1]!.update.modelId, "B queue[1] unchanged").toBe("B2");
+		expect(bQueue[1]!.update.toolPolicy, "B queue[1] toolPolicy unchanged").toEqual({ tools: {} });
+
+		// A's flush now returns null; B's flush returns its merged patch.
+		expect((c.svc as any).flushPendingConfigPatch(sessionA), "A flush empty after apply").toBeNull();
+		const bFlush = (c.svc as any).flushPendingConfigPatch(sessionB);
+		expect(bFlush, "B flush returns merged patch (peek, no clear)").not.toBeNull();
+		expect(bFlush.update.modelId, "B flush merged modelId = last (B2)").toBe("B2");
+		expect(bFlush.update.systemPrompt, "B flush has no systemPrompt (neither B patch set it)").toBeUndefined();
+		// B's queue still has 2 entries (peek, not clear).
+		expect(peekQueue(c.svc, sessionB).length, "B queue still 2 after peek-only flush").toBe(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.7 — whole-replace field (dynamicSystemSections) is NOT concatenated.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.7 — whole-replace field is replaced verbatim, NOT concatenated", () => {
+	test("two patches each set dynamicSystemSections: result is the LAST array verbatim", async () => {
+		const h = buildMergeHarness();
+		const sections1 = [
+			{ name: "section-A", compute: (): string => "A", cacheBreak: true },
+		];
+		const sections2 = [
+			{ name: "section-B", compute: (): string => "B", cacheBreak: true },
+			{ name: "section-C", compute: (): string => "C", cacheBreak: true },
+		];
+
+		enqueuePending(h.svc, h.sessionId, { dynamicSystemSections: sections1 });
+		enqueuePending(h.svc, h.sessionId, { dynamicSystemSections: sections2 });
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		const applied = h.appliedUpdates[0]!;
+		expect(applied.dynamicSystemSections, "dynamicSystemSections is the LAST array verbatim (same reference)").toBe(sections2);
+		expect((applied.dynamicSystemSections as any[]).length, "NOT concatenated — length is 2 (sections2.length), not 3").toBe(2);
+		expect((applied.dynamicSystemSections as any[])[0]!.name, "first entry is section-B (from sections2)").toBe("section-B");
+		expect((applied.dynamicSystemSections as any[])[1]!.name, "second entry is section-C (from sections2)").toBe("section-C");
+	});
+
+	test("capabilities (whole-replace) is also replaced verbatim, NOT deep-merged", async () => {
+		const h = buildMergeHarness();
+		const caps1 = { management: { id: "mgmt-1" }, pmService: { id: "pm-1" } };
+		const caps2 = { requirementStore: { id: "req-1" } };
+
+		enqueuePending(h.svc, h.sessionId, { capabilities: caps1 });
+		enqueuePending(h.svc, h.sessionId, { capabilities: caps2 });
+
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		const applied = h.appliedUpdates[0]!;
+		expect(applied.capabilities, "capabilities is LAST object verbatim (same reference)").toBe(caps2);
+		expect(applied.capabilities, "capabilities replaced, not deep-merged").toEqual({ requirementStore: { id: "req-1" } });
+		// management / pmService from caps1 are GONE (no deep merge).
+		expect((applied.capabilities as any).management, "management from caps1 NOT retained (no deep merge)").toBeUndefined();
+		expect((applied.capabilities as any).pmService, "pmService from caps1 NOT retained (no deep merge)").toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// §3.8 — apply-failure retention: queue NOT cleared; next StepEnd re-flushes,
+//        applies, confirms.
+// ---------------------------------------------------------------------------
+
+describe("round-2 fix §3.8 — apply-failure retention: queue retained on throw, re-applied next StepEnd", () => {
+	test("first StepEnd throws → queue retained; second StepEnd applies successfully + confirms (clears)", async () => {
+		const h = buildMergeHarness({ applyShouldThrowOnce: true });
+
+		enqueuePending(h.svc, h.sessionId, { modelId: "X", systemPrompt: "p" });
+
+		// First StepEnd: applyConfigUpdate throws once.
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		expect(h.appliedUpdates.length,
+			"first StepEnd: apply threw → appliedUpdates empty (throw happened before push)",
+		).toBe(0);
+		expect(h.applyCallCount(),
+			"first StepEnd: applyConfigUpdate was called once (and threw)",
+		).toBe(1);
+		expect(peekQueue(h.svc, h.sessionId).length,
+			"first StepEnd: queue NOT cleared on apply failure (retention for retry)",
+		).toBe(1);
+
+		// Mid-retry enqueue: a new patch lands in the queue. The next flush
+		// must re-merge ALL queued patches (original + new).
+		enqueuePending(h.svc, h.sessionId, { modelId: "Y" });
+		expect(peekQueue(h.svc, h.sessionId).length,
+			"after mid-retry enqueue: queue has 2 patches (original retained + new)",
+		).toBe(2);
+
+		// Second StepEnd: applies successfully (throwOnce consumed).
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+
+		expect(h.applyCallCount(),
+			"second StepEnd: applyConfigUpdate called exactly once more (total 2 calls: 1 threw + 1 succeeded)",
+		).toBe(2);
+		expect(h.appliedUpdates.length,
+			"second StepEnd: exactly one SUCCESSFUL apply recorded",
+		).toBe(1);
+
+		const applied = h.appliedUpdates[0]!;
+		expect(applied.systemPrompt, "successful apply preserved original patch's systemPrompt").toBe("p");
+		expect(applied.modelId, "successful apply used RE-MERGED modelId (last wins = 'Y' from mid-retry enqueue)").toBe("Y");
+
+		expect(peekQueue(h.svc, h.sessionId).length,
+			"second StepEnd: queue cleared after successful apply+confirm",
+		).toBe(0);
+
+		// Third StepEnd is a noop (queue empty).
+		await h.registry.trigger("StepEnd", { sessionId: h.sessionId });
+		expect(h.applyCallCount(), "third StepEnd: no further apply calls").toBe(2);
+		expect(h.appliedUpdates.length, "third StepEnd: still 1 successful apply").toBe(1);
+	});
 });
