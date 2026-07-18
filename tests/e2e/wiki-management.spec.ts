@@ -323,14 +323,18 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 	});
 
 	// ─── §G.4 Running session safety boundary (StepEnd-only revision apply) ──
-	test.skip("§G.4 running session applies new revision only at StepEnd boundary (mid-tool-call unchanged)", async () => {
-		// This needs a controllable blocking Wiki tool call inside a running
-		// AgentLoop with publish mid-call + assertion that:
-		//   (a) the in-flight tool call uses the OLD wikiAccess,
-		//   (b) after StepEnd the new wikiAccess takes effect.
-		// No fixture exists today for "block tool call until signal" — building
-		// one means a custom mock-provider + a step-idle gate. acceptance-final
-		//人工补:用 context-usage-real-api 风格 manual run 验证一次即可。
+	//
+	// Covered as an INTEGRATION test (not E2E) — running AgentLoop + controllable
+	// blocking Block tool is timing-sensitive and best driven at the runtime
+	// layer, not through Playwright UI. See
+	// tests/unit/wiki-v2-runtime-session-boundary.test.ts › §G.4. That fixture
+	// drives a real AgentLoop with a latch-blocked Block tool, publishes grants
+	// mid-tool-call, and asserts: (a) in-flight CallerCtx.wikiAccess is the OLD
+	// revision (per-call snapshot), (b) next step's CallerCtx reflects the NEW
+	// revision. It also documents a finding: publishAgentWikiPolicy applies
+	// mid-step via onChange→applyConfigUpdate (NOT via enqueueConfigPatch+StepEnd
+	// flush as the docstring claims) — the in-flight snapshot is still safe.
+	test.skip("§G.4 running session applies new revision only at StepEnd boundary (mid-tool-call unchanged) — covered by integration test", async () => {
 	});
 
 	// ─── §G.5 Active project switch boundary ─────────────────────────────
@@ -421,13 +425,16 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 	});
 
 	test.skip("§G.5 runtime: switching active project mid-session reframes Wiki Prompt at step boundary (needs running agent loop fixture)", async () => {
-		// Needs a running AgentLoop with:
-		//   - project:// grants compiled against active project,
-		//   - publish/activate a different project mid-step,
-		//   - assertion that the next step's prompt uses the new project's
-		//     subtree (no old-project content leak).
-		// acceptance-final 人工补: drive via context-usage-real-api style
-		// manual session, or build a fixture that emits a step boundary signal.
+		// Covered as an INTEGRATION test (not E2E) — running AgentLoop + blocking
+		// tool + mid-step project switch is timing-sensitive and best driven at
+		// the runtime layer. See tests/unit/wiki-v2-runtime-session-boundary.test.ts
+		// › §G.5-runtime. That fixture drives a real AgentLoop with a latch-blocked
+		// Block tool, calls sendProjectPrompt with a different projectId mid-call
+		// (production round-2 B2② path: existing loop → enqueueConfigPatch + busy
+		// skip), and asserts: (a) in-flight snapshot still on projectA, (b) next
+		// step's snapshot on projectB, (c) NO projectA residue after the switch,
+		// (d) the patch was queued + flushed at StepEnd boundary (config stays
+		// projectA right after switch, only flips after StepEnd).
 	});
 
 	// ─── §G.6 Removing the LAST grant persists [] across reload ──────────

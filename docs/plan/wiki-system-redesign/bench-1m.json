@@ -1,0 +1,90 @@
+{
+  "generatedAt": "2026-07-18T06:18:57.389Z",
+  "commitSha": "90ea9f63f2340386181b95c0a83a4613783ded95",
+  "branch": "worktree-wiki-redesign",
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpus": "12th Gen Intel(R) Core(TM) i5-12400F",
+    "cpuCount": 12,
+    "totalMemMB": 16220,
+    "nodeVersion": "24.12.0"
+  },
+  "dataGeneration": {
+    "targetNodes": 1000000,
+    "actualNodes": 1015626,
+    "linksCreated": 64,
+    "treeWide": 64,
+    "treeDepth": 4,
+    "genMs": 21787.72
+  },
+  "results": [
+    {
+      "label": "S1 canonical path read",
+      "totalMs": 8.943,
+      "iterations": 500,
+      "perOpUs": 17.89,
+      "rowsTouched": 500,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX uq_wiki_nodes_active_path (path=?)"
+    },
+    {
+      "label": "S2 parent expand + pagination",
+      "totalMs": 17.889,
+      "iterations": 200,
+      "perOpUs": 89.44,
+      "rowsTouched": 10000,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_parent (parent_id=?) | USE TEMP B-TREE FOR ORDER BY"
+    },
+    {
+      "label": "S3a outgoing links",
+      "totalMs": 15.31,
+      "iterations": 500,
+      "perOpUs": 30.62,
+      "rowsTouched": 4000,
+      "planAsserted": true,
+      "plan": "SEARCH l USING COVERING INDEX sqlite_autoindex_wiki_links_1 (source_id=?) | SEARCH t USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S3b incoming links",
+      "totalMs": 11.012,
+      "iterations": 500,
+      "perOpUs": 22.02,
+      "rowsTouched": 188,
+      "planAsserted": true,
+      "plan": "SEARCH l USING INDEX idx_wiki_links_target (target_id=?) | SEARCH s USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S4 FTS top-k",
+      "totalMs": 971.454,
+      "iterations": 200,
+      "perOpUs": 4857.27,
+      "rowsTouched": 400,
+      "planAsserted": true,
+      "plan": "SCAN f VIRTUAL TABLE INDEX 32:M3 | SEARCH n USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S5 authorized multi-scope search",
+      "totalMs": 35096.5,
+      "iterations": 100,
+      "perOpUs": 350965,
+      "rowsTouched": 2000,
+      "planAsserted": true,
+      "plan": "SCAN f VIRTUAL TABLE INDEX 32:M3 | SEARCH n USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S6 subtree move (bounded, read + 50 UPDATE)",
+      "totalMs": 2269.93,
+      "iterations": 5,
+      "perOpUs": 453985.9,
+      "rowsTouched": 78,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_archived (archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    }
+  ],
+  "allPlansOk": true,
+  "totalRunMs": 40328.92,
+  "rssBeforeMB": 160,
+  "rssAfterMB": 176
+}
