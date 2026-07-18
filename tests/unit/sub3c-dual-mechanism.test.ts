@@ -732,13 +732,19 @@ describe("A4 wiki-system-anchors refresh after compress (sub-1 #4 contract)", ()
 		expect(sessionDB.getSummaries(sessionId).length,
 			"compressSession ran during Force coordination").toBeGreaterThanOrEqual(1);
 
-		// EXPECTED: at least one invalidate("wiki-system-anchors") call from
-		// coordinateForceCompress's outer finally.
-		const wikiInvalidates = promptAssemblerInvalidateSpy.mock.calls.filter(
-			(args: any[]) => args[0] === "wiki-system-anchors",
+		// EXPECTED (plan-08 §1 cutover): coordinateForceCompress now calls the
+		// GENERIC promptAssembler.invalidate() (no args = clears ALL cached
+		// sections) in its outer finally, instead of the legacy section-specific
+		// invalidate("wiki-system-anchors"). The wiki-system-anchors section was
+		// removed when wikiAnchors were physically deleted (plan-08 §1); a
+		// section-specific invalidate would be a no-op. The generic invalidate is
+		// STRONGER — it guarantees the next turn assembles a fresh prompt
+		// regardless of which dynamic section changed. Assert the no-arg form.
+		const genericInvalidates = promptAssemblerInvalidateSpy.mock.calls.filter(
+			(args: any[]) => args.length === 0 || args[0] === undefined,
 		);
-		expect(wikiInvalidates.length,
-			"coordinateForceCompress invalidates wiki-system-anchors after compress").toBeGreaterThanOrEqual(1);
+		expect(genericInvalidates.length,
+			"coordinateForceCompress calls generic invalidate() after compress (plan-08 §1)").toBeGreaterThanOrEqual(1);
 	}, 30000);
 
 	// NOTE on the failure-path adversarial case: a runtime test that forces

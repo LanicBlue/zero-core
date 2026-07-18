@@ -1,5 +1,22 @@
 # 08 · 横切关注点
 
+> **⚠ plan-08 cutover 后此文档部分过时** —— Wiki 相关横切关注点已重设计:
+>
+> - **FS guard**:plan-08 §2 新增 `core/protected-paths.ts` + 重写 `tools/wiki-path-guard.ts`,
+>   保护 db/{core,wiki}.db{,-wal,-shm} + backups/{core,wiki} + wiki/.runtime + wiki/。
+>   Agent 的 Read/Write/Edit/Grep/Glob/Shell 统一断言;唯一例外是管理备份服务。
+> - **备份/恢复**:plan-08 §3 新增 `BackupService` + `/api/wiki-maintain` 路由;
+>   SQLite Backup API 在线 snapshot Core/Wiki 各自独立 + manifest sidecar;不复制活跃 DB。
+>   readonly 诊断绝不对活跃 DB checkpoint/VACUUM/migration。
+> - **Wiki 权限**:从 v0.8 anchor 集合(读写同界)改为 `wikiGrants` + `wikiContext`(plan-05/07);
+>   CallerCtx 每次 tool call 快照;Agent Editor 显式编辑 grants/context;publish CAS + audit + 热同步。
+> - **Wiki 生命周期**:独立 wiki.db(独立 WAL/checkpoint/backup),与 core.db 解耦。
+>   写 Wiki 不触发 Core checkpoint/mtime/WAL 变化。
+>
+> 下文凡是描述旧 anchor-scope 权限模型 / `wiki-anchor-injection` / `wikiAnchors` /
+> `project_wiki` data subscriber 的部分都需对照 [plan-08](../plan/wiki-system-redesign/plan-08-cutover-hardening.md)
+> + [plan-05](../plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md) 阅读新实现。
+>
 > 本文聚焦**贯穿多个模块**的关注点：日志、Hooks、并发、代理、恢复、安全。这些是"基础设施之基础设施"。
 
 ## 1. 日志系统

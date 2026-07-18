@@ -1,5 +1,23 @@
 # 07 · 渲染层与 IPC 桥
 
+> **⚠ plan-08 cutover 后此文档部分过时** —— Wiki 渲染层与 IPC 已重设计:
+>
+> - **数据面**(`/api/wiki`,plan-06) + **管理面**(`/api/wiki-admin`,plan-07) +
+>   **维护面**(`/api/wiki-maintain`,plan-08)三组独立 REST router,替换了旧
+>   `/api/project-wiki`(数据)与 `wiki-store.ts` renderer store。
+> - `UI_COLLECTIONS` 白名单**已移除 `project_wiki`**(plan-08 §1);新 wiki data
+>   change events 走 `wiki_nodes` / `wiki_admin` / `wiki_repositories` 独立 collection。
+> - Agent Editor 删了 `WikiAnchorsSection`(plan-07),替换为
+>   `WikiAccessSection`(grants) + `WikiContextSection`(context prompt)+ 嵌入
+>   ProjectPage 的 `WikiProjectCard`(mirror 状态)。
+> - 旧 `WikiStore`(`renderer/store/` 的 wiki-store.ts)与 IPC `wiki:*` CRUD 已退役;
+>   新 wiki UI 数据 pull-on-display(显示时 pull / active 收 push / 切走断 push)。
+> - 渲染 Wiki 树的 component 重写为 `WikiTreePanel`(plan-06),不再读磁盘 markdown。
+>
+> 下文凡是描述旧 `WikiStore` / `wiki-store.ts` / `project_wiki` UI collection /
+> `WikiAnchorsSection` / `wiki:*` IPC 的部分都需对照 [plan-06](../plan/wiki-system-redesign/plan-06-data-api-browser-ui.md)
+> + [plan-07](../plan/wiki-system-redesign/plan-07-management-ui.md) 阅读新实现。
+>
 > 渲染层是一个 React + Zustand 单页应用，通过两道桥与后端对话：contextBridge（同步请求）+ WebSocket（流式事件）。本文剖析两道桥的设计与状态管理。
 
 ## 1. 渲染层技术栈

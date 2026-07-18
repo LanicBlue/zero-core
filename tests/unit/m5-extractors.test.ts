@@ -22,7 +22,7 @@
 // 不受影响。
 //
 // ## 输入
-// 临时 CoreDatabase (mkdtempSync) + WikiStore + ExtractionCursorStore + TelemetryStore +
+// 临时 CoreDatabase (mkdtempSync) + ExtractionCursorStore + TelemetryStore +
 // 注入 testModel stub 的 ExtractorBService.
 //
 // ## 输出
@@ -34,7 +34,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreDatabase } from "../../src/server/core-database.js";
-import { WikiStore } from "../../src/server/wiki-node-store.js";
+// round-2 E4: WikiStore import removed (wiki-node-store deleted in plan-08
+// §1). The `wiki` variable in beforeEach was created but never referenced by
+// any case in this file — pure dead wiring. All non-wiki coverage
+// (ExtractionCursorStore / TelemetryStore / ExtractorBService /
+// sliceTranscriptDelta / AgentSession prune) preserved.
 import { ExtractionCursorStore } from "../../src/server/extraction-cursor-store.js";
 import { TelemetryStore } from "../../src/server/telemetry-store.js";
 import { ExtractorBService } from "../../src/server/extractor-b-service.js";
@@ -45,7 +49,6 @@ import { HookRegistry } from "../../src/core/hook-registry.js";
 
 let tmpDir: string;
 let sessionDB: CoreDatabase;
-let wiki: WikiStore;
 let cursorStore: ExtractionCursorStore;
 let telemetryStore: TelemetryStore;
 
@@ -53,7 +56,6 @@ beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), "zero-m5-"));
 	sessionDB = new CoreDatabase(join(tmpDir, "core.db"));
 	runMigrations(sessionDB);
-	wiki = new WikiStore(sessionDB);
 	cursorStore = sessionDB.getExtractionCursorStore();
 	telemetryStore = sessionDB.getTelemetryStore();
 	// Reset hook registry between tests so nothing carries state across files.

@@ -72,11 +72,14 @@ describe("tool-name migration — legacy lowercase → PascalCase domain tools",
 		beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "zc-migrate-")); });
 		afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
-		test("injects wikiStore for legacy lowercase {wiki:true}", () => {
+		// plan-08 §1: Wiki v2 tool reads the wiki-service singleton directly;
+		// capabilityHandlesFor no longer injects `wikiStore` for {wiki:true}.
+		// These two tests document the retirement of legacy wikiStore injection.
+		test("plan-08 §1: does NOT inject wikiStore for legacy {wiki:true} (singleton instead)", () => {
 			const svc = new AgentService(dir);
 			(svc as any).wikiStore = { stub: true };
 			const caps = (svc as any).capabilityHandlesFor({ tools: { wiki: { enabled: true } } });
-			expect(caps.wikiStore).toBeDefined();
+			expect(caps.wikiStore).toBeUndefined();
 		});
 
 		test("does not inject wikiStore when wiki disabled", () => {

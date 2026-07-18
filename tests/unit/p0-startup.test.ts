@@ -21,8 +21,15 @@
 // ## 关键文件
 //   - src/server/db-migration.ts (runMigrations)
 //   - src/server/core-database.ts
-//   - 全部 P0 store (AgentStore / CronStore / CronRunStore / WikiStore /
+//   - 全部 P0 store (AgentStore / CronStore / CronRunStore /
 //     ToolConfigStore / ToolUsageStore)
+//
+// round-2 E4 (opportunistic restore): this file was deleted in round-1
+// because it imported the deleted `wiki-node-store` module. Restored here
+// with the wiki-specific bits stripped (WikiStore import + the 3-line
+// `wiki.ensureProjectSubtree` block in exerciseAllStores). All non-wiki
+// boot/upgrade/store CRUD coverage preserved. Pure-wiki coverage lives in
+// the wiki-v2 suite.
 //
 
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
@@ -32,7 +39,6 @@ import { join } from "node:path";
 import { CoreDatabase } from "../../src/server/core-database.js";
 import { AgentStore } from "../../src/server/agent-store.js";
 import { CronStore, CronRunStore } from "../../src/server/cron-store.js";
-import { WikiStore } from "../../src/server/wiki-node-store.js";
 import { ToolConfigStore, ToolUsageStore } from "../../src/server/tool-usage-store.js";
 import { ProjectStore } from "../../src/server/project-store.js";
 import { runMigrations } from "../../src/server/db-migration.js";
@@ -71,9 +77,8 @@ function exerciseAllStores(sessionDB: CoreDatabase) {
 	const run = runStore.create({ cronId: cron.id, firedAt: "2026-06-17T10:00:00Z", success: true });
 	expect(runStore.get(run.id)).toBeDefined();
 
-	const wiki = new WikiStore(sessionDB);
-	const projRoot = wiki.ensureProjectSubtree(proj.id, "P");
-	expect(projRoot.id).toBe(`wiki-root:${proj.id}`);
+	// round-2 E4: WikiStore block removed (wiki-node-store module deleted in
+	// plan-08 §1; wiki subtree CRUD covered by wiki-v2 suite).
 
 	const cfg = new ToolConfigStore(sessionDB).upsert("Shell", { x: 1 });
 	expect(cfg.config).toEqual({ x: 1 });

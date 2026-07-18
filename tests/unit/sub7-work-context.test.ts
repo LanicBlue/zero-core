@@ -24,30 +24,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildContextMessage } from "../../src/runtime/context-message.js";
 import { renderWorkbench } from "../../src/runtime/workbench.js";
-import {
-	renderSystemAnchors,
-	renderContextAnchors,
-} from "../../src/runtime/wiki-anchor-injection.js";
+// plan-08 §1: wiki-anchor-injection.ts deleted (anchor model retired).
+// Tests that exercised renderSystemAnchors / renderContextAnchors were
+// dropped with the module; the remaining cases below cover context-message /
+// workbench / DI / deletion guards that don't depend on anchor injection.
 
 // ─── helpers: replicate agent-loop's exact section-wiring predicates ─────────
-
-/**
- * Replicates agent-loop.ts ~L181-203 — the wiki-system-anchors section compute
- * merges renderSystemAnchors + renderContextAnchors (root + one layer for both
- * channels) into ONE cached section. Returns the merged text, or "" when the
- * loop would drop the section.
- */
-function mergedAnchorsSection(
-	wiki: Parameters<typeof renderSystemAnchors>[0]["wiki"],
-	anchors: Parameters<typeof renderSystemAnchors>[0]["anchors"],
-): string {
-	const sys = renderSystemAnchors({ wiki, anchors });
-	const ctx = renderContextAnchors({ wiki, anchors });
-	if (!sys && !ctx) return "";
-	if (!ctx) return sys;
-	if (!sys) return ctx;
-	return sys + "\n\n" + ctx;
-}
 
 /**
  * Replicates agent-loop.ts ~L198-203 — the work-context system section is
@@ -58,11 +40,6 @@ function workContextSectionValue(closure?: () => string): string {
 	if (!closure) return ""; // section not added → contributes nothing
 	return closure() ?? "";
 }
-
-// Minimal fake wiki for the merger tests (only the get() surface the renderers
-// touch; renderSystemAnchors filters anchors by inject === "system" first, so
-// empty-anchor paths short-circuit before any wiki access).
-const fakeWiki: any = { get: () => undefined };
 
 // ─── case 1: Project / Requirement / Wiki Baseline in system; non-work lacks ─
 
@@ -144,40 +121,13 @@ describe("sub-7 / case 2 — Steps Progress in workbench channel", () => {
 
 // ─── case 3: Wiki Anchors merger — single system section, no context block ──
 
-describe("sub-7 / case 3 — Wiki Anchors merged into one wiki-system-anchors system section", () => {
-	test("merger of empty anchors yields empty (section dropped, no duplicate block)", () => {
-		// No anchors at all → both renderers return "" → merged section "" →
-		// the loop's section compute returns "" and SystemPromptAssembler drops
-		// it. There is exactly ONE anchors contribution (not two).
-		expect(mergedAnchorsSection(fakeWiki, [])).toBe("");
-	});
-
-	test("context-channel anchors join the system section (not a separate context block)", () => {
-		// Simulate a context-inject memory anchor. renderSystemAnchors filters
-		// to inject==="system" → empty; renderContextAnchors returns the memory
-		// index. The merger puts it INTO the wiki-system-anchors section.
-		// (We stub the renderers indirectly by giving only a context anchor;
-		// renderContextAnchors short-circuits to "" because wiki.get returns
-		// undefined, but the structural point — one section, not two — holds.)
-		const ctxAnchor = [{ nodeId: "n1", inject: "context", kind: "memory", depth: 1 } as any];
-		const merged = mergedAnchorsSection(fakeWiki, ctxAnchor);
-		// Single merged string (the loop joins with \n\n when both present).
-		// At minimum it is a single string value, never two separate blocks.
-		expect(typeof merged).toBe("string");
-	});
-
+describe("sub-7 / case 3 — Wiki Anchors section retired (plan-08 §1)", () => {
 	test("buildContextMessage emits NO `## Wiki Anchors` subsection (context channel)", () => {
-		// acceptance-7 补遗 case 3: context 块不再单独渲染 anchors 段.
+		// acceptance-7 case 3 + plan-08 §1: anchor injection was removed;
+		// context channel must still not render an anchors subsection.
 		const ctx = buildContextMessage({ guidelines: ["G"], memoryContext: "m" });
 		expect(ctx).not.toContain("## Wiki Anchors");
 		expect(ctx).not.toContain("Wiki Anchors (context)");
-	});
-
-	test("renderContextAnchors stays exported (merger calls it from the system section)", () => {
-		// The merger calls renderContextAnchors from inside the wiki-system-
-		// anchors section compute. If it were deleted, the merger breaks.
-		expect(typeof renderContextAnchors).toBe("function");
-		expect(typeof renderSystemAnchors).toBe("function");
 	});
 });
 
@@ -312,11 +262,9 @@ describe("sub-7 / case 7 — regression: non-work sessions unaffected", () => {
 		expect(wb === null || typeof wb === "string").toBe(true);
 	});
 
-	test("merged anchors section returns '' for empty anchors (non-work path)", () => {
-		// Non-work sessions have no wiki anchors injected here either way; the
-		// merger returns "" → section dropped → system prompt uncluttered.
-		expect(mergedAnchorsSection(fakeWiki, [])).toBe("");
-	});
+	// plan-08 §1: the wiki-anchor merger test was removed with the
+	// wiki-anchor-injection module. Non-work sessions no longer have an
+	// anchors section to drop — the section simply doesn't exist.
 });
 
 // ─── case 8: old paths deleted ───────────────────────────────────────────────

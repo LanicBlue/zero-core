@@ -244,7 +244,6 @@ function callerCtxFromLegacyCtx(ctx: ToolExecutionContext, toolCallId: string): 
 		// transitional fields (B4 collapses):
 		toolConfig: (ctx as any).toolConfig,
 		readScope: (ctx as any).readScope,
-		wikiAnchorNodeIds: (ctx as any).wikiAnchorNodeIds,
 		contextBundle: (ctx as any).contextBundle,
 		projectId: (ctx as any).projectId,
 		todos,

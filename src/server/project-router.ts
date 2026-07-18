@@ -16,7 +16,7 @@
 // src/server/ — 服务层,为外部 API 提供 Project 管理端点
 //
 // ## 依赖
-// express、project-store.ts、requirement-store.ts、project-wiki-store.ts、
+// express、project-store.ts、requirement-store.ts、
 // cron-store.ts、management-service.ts
 //
 // ## 维护规则
@@ -28,7 +28,7 @@
 import { Router } from "express";
 import type { ProjectStore } from "./project-store.js";
 import type { RequirementStore } from "./requirement-store.js";
-import type { ProjectWikiStore } from "./project-wiki-store.js";
+
 import type { TaskStepStore } from "./task-step-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { ManagementService } from "./management-service.js";
@@ -37,13 +37,13 @@ import type { WikiOperationId } from "../shared/types.js";
 export function createProjectRouter(deps: {
 	projectStore: ProjectStore;
 	requirementStore: RequirementStore;
-	wikiStore: ProjectWikiStore;
+	
 	taskStepStore: TaskStepStore;
 	cronStore?: CronStore;
 	management?: ManagementService;
 }): Router {
 	const router = Router();
-	const { projectStore, requirementStore, wikiStore, taskStepStore, cronStore, management } = deps;
+	const { projectStore, requirementStore, taskStepStore, cronStore, management } = deps;
 
 	/** GET / — list projects */
 	router.get("/", (_req, res) => {
@@ -303,7 +303,7 @@ export function createProjectRouter(deps: {
 				const reqs = requirementStore.listByProject(id);
 				for (const r of reqs) taskStepStore.deleteByRequirement(r.id);
 				for (const r of reqs) requirementStore.delete(r.id);
-				wikiStore.deleteByProject(id);
+				// plan-08 §1: legacy wiki subtree cleanup removed (wikiStore deleted). Management cascade handles wiki.db cleanup.
 				if (cronStore) {
 					for (const c of cronStore.list()) {
 						if (c.workingScope?.projectId === id) cronStore.delete(c.id);

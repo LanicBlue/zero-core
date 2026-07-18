@@ -126,7 +126,9 @@ describe("Tool gating — single-layer toolPolicy (sub-D)", () => {
 		const src = readSrc("../../src/server/agent-service.ts");
 		// Loud signal replaces the old silent-hide: each service-backed tool
 		// emits a [capability] warning when enabled but uninitialized.
-		expect(src).toMatch(/\[capability\] toolPolicy enables Wiki but wikiStore/);
+		// plan-08 §1: Wiki warning was removed (no wikiStore capability injection;
+		// Wiki v2 tool reads the singleton directly).
+		expect(src).not.toMatch(/\[capability\] toolPolicy enables Wiki but wikiStore/);
 		expect(src).toMatch(/\[capability\] toolPolicy enables Flow but requirementStore/);
 		expect(src).toMatch(/management service is not initialized/);
 		// Work needs management too — must be in the injection condition (was a

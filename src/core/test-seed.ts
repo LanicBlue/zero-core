@@ -33,12 +33,9 @@ import { mkdirSync } from "node:fs";
 import type { CoreDatabase } from "../server/core-database.js";
 import type { AgentStore } from "../server/agent-store.js";
 import type { ProviderStore } from "../server/provider-store.js";
-import type { WikiStore } from "../server/wiki-node-store.js";
+
 import type { ProjectStore } from "../server/project-store.js";
 import type { ProjectWorkStore } from "../server/project-work-store.js";
-import {
-	ensureWikiSkeleton,
-} from "../server/fresh-db-seed.js";
 import { ZERO_CORE_DIR } from "./config.js";
 import { log } from "./logger.js";
 
@@ -58,7 +55,6 @@ export function seedTestEnvironment(
 	sessionDb: CoreDatabase,
 	agentStore: AgentStore,
 	providerStore: ProviderStore,
-	wikiStore?: WikiStore,
 	projectStore?: ProjectStore,
 	projectWorkStore?: ProjectWorkStore,
 ): TestSeedResult | null {
@@ -181,29 +177,8 @@ export function seedTestEnvironment(
 		}
 	}
 
-	// §10.5 wiki skeleton — same shape fresh-db-seed.ts plants on a truly-empty
-	// DB. In test mode we create a TestAgent ABOVE, so by the time
-	// seedFreshDbDefaults runs it sees agentStore.list().length > 0 and short-
-	// circuits, skipping the wiki skeleton. The skeleton is idempotent
-	// (ensure* helpers early-return on existing nodes), so we can safely plant
-	// it here unconditionally. Without this, the P8 wiki-browser e2e opens an
-	// empty tree even with the correct selectors.
-	if (wikiStore) {
-		try {
-			ensureWikiSkeleton(wikiStore);
-			// Materialize the seeded TestProject's wiki subtree so a
-			// project-scoped wiki view returns a real (non-empty) tree rooted
-			// at wiki-root:<projectId>. The P8 project-scope e2e asserts the
-			// GLOBAL root disappears from the project view — having the
-			// project subtree present makes the fixture a faithful
-			// representation of a project with wiki content. Idempotent.
-			if (testProjectId) {
-				wikiStore.ensureProjectSubtree(testProjectId, "TestProject");
-			}
-		} catch (err) {
-			log.session("test", `wiki skeleton seed failed: ${(err as Error).message}`);
-		}
-	}
+	// plan-08 §1: legacy wiki skeleton + project subtree seeding removed (wikiStore deleted).
+	// Wiki v2 fixture seed (if needed) goes via wiki.db / WikiService on the new schema.
 
 	return {
 		agentId: updated.id,

@@ -1,112 +1,144 @@
 # 06 - 知识子系统
 
-> 本文以当前代码的实际运行路径为准。Zero-Core 的记忆主线是全局 Wiki tree：启动时创建 `WikiStore`，AgentLoop 通过 wiki anchors 把项目/Agent 记忆注入 system/context，提取与压缩流程继续向 Wiki 写入长期记忆。旧的 MemoryRecall/RAG 自动召回、Gen1 `MemoryNodeStore`、以及独立的 KB(向量 RAG)子系统已整体移除 —— 知识与记忆都作为 wiki 子树存在。
+> **⚠ plan-08 cutover 后此文档大部分过时**。Wiki 已从 v0.8 的"`project_wiki` 表 +
+> 磁盘镜像 markdown 树 + anchor 决定 scope"模型**重设计**为:
+>
+> - 独立 `db/wiki.db`(7 张表:`wiki_nodes` / `wiki_links` / `wiki_addresses` /
+>   `wiki_repositories` / `wiki_source_bindings` / `wiki_nodes_fts` / `wiki_audit_log`)。
+> - **正文直接存 `wiki_nodes.content`**(不再下沉磁盘 markdown)。
+> - **scope 由 `wikiGrants` + `wikiContext` 决定**(在 CallerCtx 中编译,plan-05/07),
+>   不再由 anchors 决定。
+> - 节点寻址用 **canonical path** 或 **logical address**(`memory://` /
+>   `project://` / `runtime://...`),不再用 nodeId/short id。
+> - Project 镜像通过 `wiki_repositories` + `wiki_source_bindings` 表跟踪 git
+>   repo(source_root + indexed_revision + per-file blob_oid),不再用
+>   `header:/intent:/structure:` provenance 节点。
+>
+> 下文 §2/§2.5/§2.6 描述的 v0.8 模型(`WikiStore` / `wiki-anchor-injection.ts` /
+> `ProjectWikiStore` / `WikiSkeletonService` 写 `header:/intent:/structure:` /
+> 磁盘镜像树 `diskPathFor` / `wiki_anchors` / `wikiAnchors` / `wiki_scan_cursors`)
+> 已全部**物理删除**(plan-08 §1)。本文保留这些段落仅作为**历史参考**,
+> 阅读时请对照:
+>
+> - [plan-01-database-contracts.md](../plan/wiki-system-redesign/plan-01-database-contracts.md)(新 schema)
+> - [plan-02-core-service-address-auth.md](../plan/wiki-system-redesign/plan-02-core-service-address-auth.md)(地址 + 授权)
+> - [plan-03-project-git-mirror.md](../plan/wiki-system-redesign/plan-03-project-git-mirror.md)(Project git 镜像)
+> - [plan-04-wiki-tool-search.md](../plan/wiki-system-redesign/plan-04-wiki-tool-search.md)(Wiki v2 tool)
+> - [plan-05-agent-runtime-prompt.md](../plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md)(grants/context + Prompt)
+> - [plan-06-data-api-browser-ui.md](../plan/wiki-system-redesign/plan-06-data-api-browser-ui.md)(数据面 API/UI)
+> - [plan-07-management-ui.md](../plan/wiki-system-redesign/plan-07-management-ui.md)(管理面 API/UI)
+> - [plan-08-cutover-hardening.md](../plan/wiki-system-redesign/plan-08-cutover-hardening.md)(cutover + 备份 + 维护)
+> - [design.md](../plan/wiki-system-redesign/design.md)(完整设计)
+
+## 0. Wiki v2(plan-01..plan-08 cutover 后的当前模型)
+
+### 0.1 数据存储
+
+- **独立 `db/wiki.db`**(`WikiDatabase` 持有,`src/server/wiki/wiki-database.ts`)。
+  生命周期与 core.db 解耦:独立 WAL / checkpoint / backup / health / close。
+  PRAGMA: `journal_mode=WAL` + `foreign_keys=ON` + `busy_timeout=5000`。
+- 7 张核心表 + `wiki_schema_version`:
+  - `wiki_nodes(id, parent_id, name, path, kind, summary, content, attributes_json, revision, created_at, updated_at, archived_at)` — INTEGER PRIMARY KEY 自带 INTEGER affinity;`content` TEXT 直接存正文(不再下沉磁盘);active path/sibling 用 partial unique index(`WHERE archived_at IS NULL`),归档后可重建同路径。
+  - `wiki_links(source_id, target_id, relation, created_at, created_by)` — 复合主键,一表双向(in/out);source CASCADE、target RESTRICT。
+  - `wiki_addresses(address, target_id, resolver, scope, kind, prompt_policy, revision, ...)` — 静态逻辑地址表;动态地址(`memory://` / `project://`)不入此表,运行时解析。
+  - `wiki_repositories(repository_id, project_node_id, project_id, source_root, default_branch, indexed_revision, sync_status, ...)` — 项目镜像 git repo 绑定,1:1 与项目根节点。
+  - `wiki_source_bindings(node_id, repository_id, source_path, source_kind, indexed_revision, blob_oid)` — 文件/目录节点的源码映射,UNIQUE(repository_id, source_path)。
+  - `wiki_nodes_fts(name, summary, content)` — FTS5 external-content(content='wiki_nodes', content_rowid='id'),无 trigger,由 repository 在显式 transaction 内同步。
+  - `wiki_audit_log(audit_id, request_id, actor_agent_id, session_id, action, node_path, old_revision, new_revision, detail_json, created_at)` — 公开 opaque 操作 receipt。
+- 固定根(`wiki-root` + `wiki-root/knowledge` / `wiki-root/memory` / `wiki-root/projects`)由 `WikiDatabase.open` bootstrap,幂等。
+- Schema init/migration **不在** `db-migration.ts` 的旧 `project_wiki` 段;由 `wiki-schema.ts` 的 `initWikiSchema` + `wiki_schema_version` 表管理。fresh core.db 不再创建 `project_wiki` 表。
+
+### 0.2 数据面 vs 管理面(双平面分离)
+
+- **数据面**(`/api/wiki`,plan-06):Agent 与 UI 共享的 wiki tree 操作。9 个 Wiki tool action(expand/read/search/create/update/delete/link/unlink/move)走 CallerCtx 编译的 `wikiAccess` 授权。
+- **管理面**(`/api/wiki-admin`,plan-07):配置 Wiki policy —— addresses / repositories / grants / context / sessions。20 个 endpoint;authority 由 server host 注入 `WIKI_ADMIN_AUTHORITY`(renderer 不能从 body 自授身份)。
+- **维护面**(`/api/wiki-maintain`,plan-08 §3 + §5):backup / restore / integrity / foreign-keys / fts rebuild / optimize / explicit legacy cleanup。不操作活跃 DB 的 checkpoint/VACUUM/migration;只读 PRAGMA(integrity_check/foreign_key_check/optimize)安全。
+
+### 0.3 Grants + Context(scope 与 prompt 编译)
+
+- 每个 Agent 有 `wikiGrants`(显式 scope list:canonical scope + actions + 可选 path constraint)和 `wikiContext`(prompt 注入规则:scope + template + limit + view)。
+- 会话启动时 `compileWikiAccess(agent, sessionCtx)` 把 grants 编译为 `WikiAccess`(scope 树 + per-scope actions)。每次 tool call 快照到 CallerCtx。
+- `compileWikiContext(agent, sessionCtx)` 把 context rules 物化为 prompt 段落。
+- Project `activeProjectId` 在 session build 时注入;`project://` 地址按 activeProjectId 解析。
+- Agent Editor(`WikiAccessSection.tsx` / `WikiContextSection.tsx`)显式编辑 grants/context;publish 走 CAS + audit + 热同步。
+
+### 0.4 Project git 镜像
+
+- 项目根节点(`wiki-root/projects/<projectId>` 绑定到 `wiki_repositories`)。
+- `WikiProjectIndexer.ensureBinding` / `sync` / `rebuildFromScratch` 把 git repo 的文件/目录结构镜像到 `wiki_nodes`(kind=`source_file` / `source_directory` 等)+ `wiki_source_bindings`(per-file blob_oid + indexed_revision)。
+- 增量扫描用 `git diff <indexed_revision>..<default_branch>`;feature-branch WIP 不进 wiki,只跟 main/master。
+- rename 走两阶段 swap(避免 partial UNIQUE 冲突),FTS 在 phase-1 同步改名(round-3 FIX 1)。
+- 状态可观察:`wiki_repositories.sync_status`(pending/indexing/idle/failed)+ `last_indexed_at` + `last_error`;UI/Project mirror card 显示进度。
+
+### 0.5 备份与维护(plan-08 §3)
+
+- `BackupService`(`src/server/wiki-backup-service.ts`):SQLite Backup API 在线 snapshot Core/Wiki 各自独立,manifest sidecar JSON 记 source/sha256/schema_version/business_revision/sqlite_version/verified。**不复制活跃 DB 文件**。
+- `restoreSnapshot` 复制到临时 DB(不覆盖活跃);verify integrity + foreign keys + 业务计数。
+- 写 Wiki 不触发 Core checkpoint/mtime/WAL 变化(独立 DB + 独立 connection)。
+- readonly 诊断绝不对活跃 DB checkpoint/VACUUM/migration(memory feedback-sessions-db-readonly)。
+
+### 0.6 FS guard(plan-08 §2)
+
+- `core/protected-paths.ts` 集中列出 db/core.db{,-wal,-shm} + db/wiki.db{,-wal,-shm} + backups/{core,wiki} + wiki/.runtime + wiki/。
+- `tools/wiki-path-guard.ts` 重写:Read/Write/Edit/Grep/Glob/Shell 统一断言 `assertNotProtectedPath`。canonicalize 处理相对路径/引号/env var/大小写/symlink/junction/shell 拼接。
+- 唯一例外:管理备份服务(不在 Agent shell 内)。
+
+### 0.7 性能基线(plan-08 §4)
+
+可重复 benchmark 脚本 `scripts/wiki-benchmark.ts --nodes=100000` (CI) 或 `--nodes=1000000` (发布前手工):
+canonical path read / parent expand+pagination / incoming-outgoing links / FTS top-k / authorized multi-scope search / bounded subtree move。
+每场景前 `EXPLAIN QUERY PLAN` 断言用 path/parent/target/FTS 索引(避免硬件 flaky)。
+结果记录参考硬件/数据规模/耗时/内存/commit SHA。1M 由人工触发,报告附在 `docs/plan/wiki-system-redesign/bench-1M.json`(若未附则不能宣称百万节点已验证)。
+
+---
 
 ## 1. 当前实际分层
 
 | 子系统 | 当前定位 | 是否在默认 Agent 会话主链路 | 主要入口 |
 |------|------|------|------|
 | MCP | 外部工具协议接入 | 是，以工具形式暴露 | `MCPManager` + `ToolRegistry` |
-| Wiki tree | 项目知识、Agent 记忆、自由锚点 | 是，默认上下文/系统提示注入 | `WikiStore` + `wiki-anchor-injection.ts` + `Wiki` 工具 |
+| Wiki v2 (plan-01..08) | 项目知识 + Agent 记忆 + Project 镜像,独立 wiki.db + grants/context | 是,Wiki v2 tool + context bundle 注入 | `WikiService` + `Wiki` v2 tool(`/api/wiki` 数据面) + `/api/wiki-admin` 管理面 |
 
-> 历史上的 KB 子系统(本地文档 → chunk → embedding → 向量检索)与 Gen1 `MemoryNodeStore`(FTS5 节点记忆)已退役:前者将按 wiki 格式切文件重做,后者被 wiki memory 子树取代。详见 §3。
+> 历史上的 KB 子系统(本地文档 → chunk → embedding → 向量检索)与 Gen1 `MemoryNodeStore`(FTS5 节点记忆)已退役(详见 §3)。**v0.8 的 anchor-scope + 磁盘镜像 markdown 模型也已在 plan-08 cutover 中退役**(本文 §2 以下保留作历史参考)。
 
-实际运行图:
+实际运行图(plan-08 后):
 
 ```mermaid
 graph TB
-    Start["server/index.ts startup"] --> DB["CoreDatabase + migrations"]
-    DB --> WikiStore["WikiStore(sessionDB)"]
-    WikiStore --> Extractors["ExtractorA/B deps"]
-    WikiStore --> ProjectCompat["ProjectWikiStore compatibility wrapper"]
-    WikiStore --> AgentService["AgentService.setWikiStoreGlobal"]
+    Start["server/index.ts startup"] --> DB["DatabaseManager.open (core.db + wiki.db)"]
+    DB --> WikiDb["WikiDatabase (wiki.db)"]
+    WikiDb --> WikiService["WikiService (nodeRepo + linkRepo + auditRepo + authz)"]
+    WikiService --> DataApi["/api/wiki (数据面,plan-06)"]
+    WikiService --> AdminApi["/api/wiki-admin (管理面,plan-07)"]
+    WikiService --> MaintainApi["/api/wiki-maintain (维护面,plan-08)"]
+    WikiService --> Indexer["WikiProjectIndexer (git mirror,plan-03)"]
+    WikiService --> AgentService["AgentService (CallerCtx.wikiAccess 编译)"]
     AgentService --> Loop["AgentLoop"]
-    Loop --> Anchors["resolveAnchors(agentId, projectId, wikiAnchors)"]
-    Anchors --> System["renderSystemAnchors -> cached system prompt"]
-    Anchors --> Context["renderContextAnchors -> context message"]
-    WikiStore --> WikiTool["Wiki runtime tool"]
-    Extractors --> MemoryNodes["Extractor/compression writes memory nodes to Wiki"]
+    Loop --> CallerCtx["CallerCtx per tool call (snapshot wikiAccess)"]
+    CallerCtx --> WikiV2Tool["Wiki v2 tool (9 action)"]
+    Loop --> ContextBundle["context bundle (compileWikiContext,plan-05)"]
 ```
 
-## 2. Wiki Tree 是当前记忆主线
+---
+
+## 2. (Legacy v0.8) Wiki Tree — 已被 §0 Wiki v2 取代
+
+> **以下 §2/§2.x 全部描述 v0.8 模型,plan-08 cutover 后已退役**。保留作历史参考。
+> 当前模型见 §0 Wiki v2。
+> 阅读时请把以下概念替换:
+>   - `WikiStore` / `ProjectWikiStore` / `wiki-node-store.ts` → `WikiService` + `wiki-node-repository.ts`(新 wiki.db)
+>   - `wiki-anchor-injection.ts` + `wikiAnchors` / `wikiAnchorNodeIds` → `wikiGrants` + `wikiContext`(CallerCtx 编译)
+>   - `project_wiki` 表 + 磁盘镜像 markdown → `wiki_nodes.content` TEXT(直接存)
+>   - `diskPathFor` / `writeNodeDetail` / `readNodeDetail` → 直接 SQL 读写 `wiki_nodes.content`
+>   - `header:` / `intent:` / `structure:` provenance → `wiki_repositories` + `wiki_source_bindings` 表(per-file blob_oid + indexed_revision)
+>   - `WikiScanCursorStore` → `wiki_repositories.indexed_revision` + `wiki_source_bindings.indexed_revision`
+>   - `WikiSkeletonService`(写 header:/intent:) → `WikiProjectIndexer`(只写 wiki_nodes + wiki_source_bindings)
+>   - 短 id `#xxxxxxxx` → canonical path / logical address(`memory://` / `project://` / `runtime://...`)
+>   - `Wiki` v1 tool(expand/search/docRead/docWrite/docEdit + projectId 闸门)→ `Wiki` v2 tool(9 action:expand/read/search/create/update/delete/link/unlink/move)
 
 ### 2.1 启动与依赖注入
 
 `src/server/index.ts` 在启动早期创建全局 `WikiStore`:
-
-```ts
-const wikiStoreGlobal = new WikiStore(sessionDB);
-```
-
-随后它被注入到三个关键位置:
-
-- `ExtractorAService({ ..., wiki: wikiStoreGlobal })`:后处理提取结果写入 Wiki。
-- `new ProjectWikiStore(wikiStoreGlobal)`:保留旧 project-wiki API 的兼容视图。
-- `agentService.setWikiStoreGlobal(wikiStoreGlobal)`:每个 AgentLoop 都可以解析 Wiki anchors。
-
-这说明 Wiki 不是附属功能,而是运行时上下文系统的一等依赖。
-
-### 2.2 AgentLoop 中的注入方式
-
-`src/runtime/agent-loop.ts` 构造时从 `config.wikiStoreGlobal ?? config.wikiStore` 解析 Wiki,并调用 `resolveAnchors()` 得到本轮会话的锚点集合。
-
-默认锚点来自 `src/runtime/wiki-anchor-injection.ts`:
-
-| 锚点 | 来源 | 注入位置 | 作用 |
-|------|------|------|------|
-| Agent memory root | `memoryAgentRootId(agentId)` | context | Agent 私有记忆索引 |
-| Project subtree root | `projectSubtreeRootId(projectId)` | system | 项目级知识轮廓 |
-| Global root | `WIKI_GLOBAL_ROOT_ID`(无 projectId 时自动) | off(只作 scope,不注入) | zero/全局会话的整树读写授权 |
-| Free anchors | `AgentRecord.wikiAnchors` | system/context/tool | 手动绑定的 Wiki 节点或子树 |
-
-`renderSystemAnchors()` 会把 system-channel 的项目/记忆轮廓拼入系统提示词。`renderContextAnchors()` 会在每轮 LLM 调用前生成 `## Wiki Anchors (context)` 段落,再由 `buildContextMessage()` 注入 `<context>`。
-
-#### 权限模型(读写同界 / pure anchor model)
-
-`resolveAnchors()` 解析出的 anchor 节点 id 并集,**既是读边界也是写边界**:
-
-- AgentLoop 把 `anchorNodeIds(wikiAnchors)` 注入 tool context 的 `wikiAnchorNodeIds`。
-- `Wiki` 工具([`runtime/tools/wiki-tool.ts`](../../src/runtime/tools/wiki-tool.ts))的 expand/search/docRead 用 `listVisibleFromAnchors` / `getVisibleFromAnchors`;create/update/delete/docWrite/docEdit 用 store 层 `upsertNodeInScope` / `updateNodeInScope` / `deleteNodeInScope` / `writeNodeDetailInScope`,全部经 `assertNodeInAnchorScope` 校验。**能读 = 能写**。
-- 项目 Agent 的 anchor 集 = 自己项目子树 + 自己 memory + free,看不到也写不到别项目/全局知识。
-- zero / 全局会话(无 projectId)的 anchor 集含全局根 → 整棵树可读可写。
-- free wikiAnchors 授予的子树同样可写(不再像旧版「projectId 闸门只读不写」)。
-- 旧的 projectId-based 写方法(`upsertProjectNode`/`updateNodeMetadata`/`deleteNode`/`assertNodeInsideProjectScope`)标 `@deprecated`,archivist/extractor 继续用。
-
-##### detail 可见性 + 覆盖保护
-
-agent 列出节点时就能看到正文规模,无需盲目全量读:
-
-- `WikiStore.getNodeDetailSize(nodeId)` 只 `statSync`(不读内容)→ 字节数(无文件 = 0)。
-- `formatBodySize(bytes)`(`wiki-anchor-injection.ts`,导出复用)→ `(no body)` / `(123b)` / `(1.2kb)`。
-- 凡「以节点形式列出」处都带 size:`Wiki` 工具的 `expand`(根 + 子树行)/`search`,以及 system/context 注入的渲染(`renderProjectSubtreeOutline` 根+子、`renderMemoryIndex` 叶)。
-- `docWrite` 覆盖非空正文必须显式带 `overwrite:true`,否则拒绝并回显现有正文大小(提示改用 `docEdit` 精确改)。空节点/`create` 的 `content` 不受影响。
-
-权限强制在 store 层([`server/wiki-node-store.ts`](../../src/server/wiki-node-store.ts));工具层只透传 anchor 集。
-
-当前 Agent 记忆默认不是把全文塞入上下文,而是渲染成 MEMORY.md 风格索引:
-
-```md
-- title [nodeId]
-```
-
-这会给模型一个可导航的记忆目录,具体内容再通过 `Wiki` 工具读取。
-
-### 2.3 写入路径
-
-当前长期记忆写入主要来自两条后台路径:
-
-- `runtime/hooks/extraction-hooks.ts`:StepEnd 后按阈值调度 Extractor A/B(hook-redesign Step 3A 从 PostTurnComplete 迁来),Extractor A 将结构化记忆写入 Wiki(per-agent memory 子树,`createMemoryNodeForAgent`)。
-- `runtime/hooks/compression-hooks.ts`:压缩流程提取的 memory nodes 写入 `wikiStoreGlobal`(`createMemoryNode` under 全局 memory type roots)。
-
-这也是为什么"wiki 树作为记忆"不是概念层描述,而是实际写路径。Wiki 不可用时(如非 agent-service 构建的会话)跳过抽取,不再回退到任何旧 store。
-
-### 2.4 手动操作路径
-
-运行时工具里当前暴露的是 `Wiki` 工具。`src/runtime/tools/index.ts` 已明确移除 `MemoryRecall` / `MemoryNote`,注释说明记忆现在位于每个 Agent 的 Wiki 子树中,Agent 通过 `Wiki` action 工具读取/搜索/维护。
-
-### 2.5 Wiki 体的磁盘镜像树布局(v0.8 P1 §10.1)
-
-> Wiki 节点的 **结构**(id/parent/title/path/...)在数据库 `project_wiki` 表,但节点的 **正文**(detail,可能是几千字的 Markdown)落磁盘。布局规则不再是平铺,而是 **镜像树结构** —— 文件系统目录就是 Wiki 的中间节点,文件就是叶子,肉眼打开 `<repo>/wiki/` 就能直接看到树。
 
 #### 存储根与隔离
 

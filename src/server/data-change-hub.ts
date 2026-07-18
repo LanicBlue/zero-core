@@ -45,7 +45,6 @@ const UI_COLLECTIONS = new Set([
 	"projects",
 	"crons",
 	"requirements",
-	"project_wiki",
 	// N1: structural session-list collections + kanban / execution-detail tables.
 	"sessions",
 	"orchestrate_plans",
@@ -63,7 +62,9 @@ const UI_COLLECTIONS = new Set([
 	// `{path, op, revision, oldPath?, parentPath?}` 用于增量失效缓存。
 	// REST adapter (wiki-router.ts) 在每次 mutation 后 emit;renderer
 	// wiki-store 订阅这三个 collection,只失效受影响分支(不全量重拉)。
-	// 旧 `project_wiki` 仍保留给 plan-08 cutover 前的 legacy path。
+	// plan-08 §1: 旧 `project_wiki` collection 从白名单移除 —— legacy
+	// ProjectWikiStore / project-wiki-router 已删,任何 emit 来自死代码路径。
+	// 既有 DB 上的 project_wiki 表保留(不再读/写),renderer 订阅也得清。
 	"wiki_nodes",
 	"wiki_links",
 	"wiki_sync",

@@ -30,7 +30,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve, extname, basename } from "node:path";
 import { buildTool } from "./tool-factory.js";
 import { checkSyntax, formatDiagnostics } from "./syntax-check.js";
-import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { isProtectedPathRealpath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { resolveSkillWritePath, stampAuthorFrontmatter } from "./skill-paths.js";
 import { checkSkillAuthorGate } from "./skill-author-gate.js";
 import type { CallerCtx, ToolResult } from "./types.js";
@@ -74,7 +74,9 @@ export const fileEditTool = buildTool({
 		});
 		if (!callerCtx.workingDir) return wrap("Error: no workspace directory configured");
 		// v0.8 (P1 §10.1): block agent edits to the wiki memory store.
-		if (isWikiDiskPath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
+		// round-2 Fix 2 (acceptance-08 §B blocker): realpath-aware variant
+		// catches symlink/junction bypass.
+		if (isProtectedPathRealpath(path, callerCtx.workingDir)) return wrap(wikiPathRejectMessage(path));
 
 		// skill-system sub-8 (decision 4 write + 11): `[skills]/<id>/<rel>` 虚拟
 		// 路径写通道(Edit)。门禁先行,再做路径解析。读家族不经此分支。

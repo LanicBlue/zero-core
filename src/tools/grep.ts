@@ -30,7 +30,7 @@ import { resolve, relative, extname, sep, basename } from "node:path";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
 import { EXEC_MAX_BUFFER_BYTES } from "../core/constants.js";
-import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { isProtectedPathRealpath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { tryParseSkillPath, remapGrepOutputLines, isPathInSkillBase, isSkillVirtualPath } from "./skill-paths.js";
 import { resolveSkillByName } from "../server/skill-scanner.js";
 import type { CallerCtx, ToolResult } from "./types.js";
@@ -337,7 +337,9 @@ export const grepTool = buildTool({
 			searchPath = skillCtx.baseDir;
 		} else if (path) {
 			// v0.8 (P1 §10.1): block agent greps inside the wiki memory store.
-			if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
+			// round-2 Fix 2 (acceptance-08 §B blocker): realpath-aware variant
+			// catches symlink/junction bypass.
+			if (isProtectedPathRealpath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
 			searchPath = workingDir ? resolve(workingDir, path) : path;
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(resolve(workingDir))) {
 				return wrap(`Access denied: search path outside workspace (${path})`);

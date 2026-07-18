@@ -587,11 +587,18 @@ function CronAlarmForm({
 			</div>
 
 			<div className="workspace-config-row">
-				<label className="config-label">Wiki Root Node Id</label>
+				<label className="config-label">
+					Wiki Root Node Id
+					<span className="config-label-hint" title="plan-08 §E7: wiki scope is now driven by the bound agent's wikiGrants (configured in Agent Editor → Wiki Access), not by this field. The cron's workingScope.wikiRootNodeId is preserved for back-compat but ignored at runtime.">
+						(disabled — see Agent Editor → Wiki Access)
+					</span>
+				</label>
 				<input
 					className="workspace-dir-input"
 					value={form.wikiRootNodeId}
 					onChange={(e) => setForm((f) => ({ ...f, wikiRootNodeId: e.target.value }))}
+					disabled
+					title="plan-08 §E7: Wiki scope is driven by the bound agent's wikiGrants (Agent Editor → Wiki Access). This field is preserved for back-compat but ignored at runtime."
 				/>
 			</div>
 

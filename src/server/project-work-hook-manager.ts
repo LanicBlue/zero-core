@@ -3,11 +3,14 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 订阅 data-change-hub 的 domain 事件(requirements/projects/crons/project_wiki/
-// agents 的 create/update/delete),按 `${collection}.${op}` 拼事件名,匹配
+// 订阅 data-change-hub 的 domain 事件(requirements/projects/crons/agents 的
+// create/update/delete),按 `${collection}.${op}` 拼事件名,匹配
 // project_work.hooks[].event;命中且 record.projectId 一致 → 调
 // ProjectWorkRunner.fireProjectWork(空岗/缺工具自动 skip)。复用 data-change-hub
 // 的 tick coalesce(同 tick 多变更已去重),非净新增事件总线。
+//
+// plan-08 §1:`project_wiki` 不再在 data-change-hub 白名单里(project_wiki 表
+// 退役 + ProjectWikiStore 删除),本管理器不会再收到 project_wiki.* 事件。
 //
 // ## 输入
 // - data-change-hub 事件流

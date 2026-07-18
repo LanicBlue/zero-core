@@ -30,7 +30,7 @@ import { resolve, relative, normalize } from "node:path";
 import { stat } from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import { buildTool } from "./tool-factory.js";
-import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { isProtectedPathRealpath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { tryParseSkillPath, mapRealToVirtual, isPathInSkillBase, isSkillVirtualPath } from "./skill-paths.js";
 import { resolveSkillByName } from "../server/skill-scanner.js";
 import type { CallerCtx, ToolResult } from "./types.js";
@@ -142,7 +142,9 @@ export const globTool = buildTool({
 				p = p.slice(1, -1);
 			}
 			// v0.8 (P1 §10.1): block agent globbing inside the wiki memory store.
-			if (isWikiDiskPath(p, workingDir)) return wrap(wikiPathRejectMessage(p));
+			// round-2 Fix 2 (acceptance-08 §B blocker): realpath-aware variant
+			// catches symlink/junction bypass.
+			if (isProtectedPathRealpath(p, workingDir)) return wrap(wikiPathRejectMessage(p));
 			searchPath = workingDir ? normalize(resolve(workingDir, p)) : normalize(resolve(p));
 			if (restrictToWorkspace && workingDir && !searchPath.startsWith(normalize(resolve(workingDir)))) {
 				return wrap(`Access denied: search path outside workspace (${path})`);

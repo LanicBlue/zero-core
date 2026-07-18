@@ -38,10 +38,10 @@ import { SubagentsSection } from "./SubagentsSection.js";
 // plan-07 §3 / §4:Wiki grants / context 编辑器(取代已删除的 WikiAnchorsSection)。
 import { WikiAccessSection } from "./WikiAccessSection.js";
 import { WikiContextSection } from "./WikiContextSection.js";
-// wiki-system-redesign plan-06: WikiAnchorsSection 已删除(锚点注入模型退役)。
-// AgentRecord.wikiAnchors 字段保留到 plan-08 删除;form 仍 round-trip 它
-// (agent-editor-types.ts:62),但不再在 UI 编辑。Wiki grants/context 编辑器
-// 由 plan-07 实现(WikiAccessSection / WikiContextSection)。
+// wiki-system-redesign plan-06 + plan-08: WikiAnchorsSection 已删除(锚点注入模型退役),
+// plan-08 §1 把 AgentRecord.wikiAnchors 字段也物理删除(form/wiring 全清)。
+// Wiki grants/context 编辑由 plan-07 的 WikiAccessSection /
+// WikiContextSection 接管。
 import {
 	DEFAULT_ENABLED_TOOLS,
 	agentToForm,
@@ -283,7 +283,7 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(next);
 	};
 
-	// v0.8 (P8 §11.10): subagents + wikiAnchors harness-field editors.
+	// v0.8 (P8 §11.10) + plan-08 §1: subagents harness-field editor (wikiAnchors deleted).
 	// NOTE: when the list becomes empty we set `[]` (NOT undefined). The autosave
 	// payload is JSON.stringify'd before hitting the backend (ipc-proxy), and
 	// JSON drops undefined properties — so `undefined` would never reach the
@@ -296,9 +296,6 @@ export default function AgentEditor({ agent, onSaved, onCancel, onDelete, prefil
 		if (agent) autoSave(f);
 	};
 
-	// plan-06: WikiAnchorsSection + updateWikiAnchors 已删除。AgentRecord.wikiAnchors
-	// 字段(form round-trip 保留)由 plan-07 的 WikiAccessSection / WikiContextSection
-	// 取代。
 
 	// plan-07 §3 / §4:Wiki grants / context form writers。和 updateSubagents 同
 	// 款,**list 空时显式写 []**(JSON.stringify 丢 undefined → ipc-proxy 传给

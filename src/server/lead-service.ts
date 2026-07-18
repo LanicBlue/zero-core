@@ -34,7 +34,7 @@
 import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
-import type { ProjectWikiStore } from "./project-wiki-store.js";
+
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { TemplateStore } from "./template-store.js";
@@ -65,7 +65,7 @@ export class LeadService {
 	private agentStore: AgentStore;
 	private requirementStore: RequirementStore;
 	private taskStepStore: TaskStepStore;
-	private wikiStore: ProjectWikiStore;
+	
 	private projectStore: ProjectStore;
 	private templateStore: TemplateStore;
 	private gitIntegration: GitIntegration | null = null;
@@ -81,7 +81,7 @@ export class LeadService {
 		agentStore: AgentStore;
 		requirementStore: RequirementStore;
 		taskStepStore: TaskStepStore;
-		wikiStore: ProjectWikiStore;
+		
 		projectStore: ProjectStore;
 		templateStore: TemplateStore;
 		gitIntegration?: GitIntegration;
@@ -92,7 +92,7 @@ export class LeadService {
 		this.agentStore = deps.agentStore;
 		this.requirementStore = deps.requirementStore;
 		this.taskStepStore = deps.taskStepStore;
-		this.wikiStore = deps.wikiStore;
+		
 		this.projectStore = deps.projectStore;
 		this.templateStore = deps.templateStore;
 		if (deps.gitIntegration) this.gitIntegration = deps.gitIntegration;
@@ -191,7 +191,7 @@ export class LeadService {
 				projectId: project.id,
 				projectPath: featureWorkspace,
 				projectName: project.name,
-				wikiStore: this.wikiStore,
+				
 				requirementStore: this.requirementStore,
 				taskStepStore: this.taskStepStore,
 				activeRequirementId: requirementId,

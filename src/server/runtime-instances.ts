@@ -24,11 +24,13 @@
 // - 新增"工具要读的数据源模块"时:(1) 该模块加 getter/setter;(2) 在此加字段 +
 //   setXxx 调用;(3) server/index.ts 构造时传实例。
 // - 字段全部可选(headless 兼容)。
+//
+// wiki-system-redesign plan-08 §1:旧 WikiStore(global / project back-compat)
+// 单例注册移除。新 Wiki v2 runtime 单例(setWikiRuntime / setWikiService /
+// setWikiSearchService)在 wiki/wiki-runtime.ts 注册,不在此处。
 
 import { setAgentService } from "./agent-service.js";
 import { setCoreDatabase } from "./core-database.js";
-import { setWikiStoreGlobal, type WikiStore } from "./wiki-node-store.js";
-import { setProjectWikiStore, type ProjectWikiStore } from "./project-wiki-store.js";
 import { setRequirementStore, type RequirementStore } from "./requirement-store.js";
 import { setManagementService, type ManagementService } from "./management-service.js";
 import { setPmService, type PmService } from "./pm-service.js";
@@ -45,8 +47,6 @@ import type { CoreDatabase } from "./core-database.js";
 export interface ServerInstances {
 	agentService?: AgentService;
 	sessionDB?: CoreDatabase;
-	wikiStoreGlobal?: WikiStore;
-	projectWikiStore?: ProjectWikiStore;
 	requirementStore?: RequirementStore;
 	managementService?: ManagementService;
 	pmService?: PmService;
@@ -64,8 +64,6 @@ export interface ServerInstances {
 export function registerServerInstances(deps: ServerInstances): void {
 	if (deps.agentService !== undefined) setAgentService(deps.agentService);
 	if (deps.sessionDB !== undefined) setCoreDatabase(deps.sessionDB);
-	if (deps.wikiStoreGlobal !== undefined) setWikiStoreGlobal(deps.wikiStoreGlobal);
-	if (deps.projectWikiStore !== undefined) setProjectWikiStore(deps.projectWikiStore);
 	if (deps.requirementStore !== undefined) setRequirementStore(deps.requirementStore);
 	if (deps.managementService !== undefined) setManagementService(deps.managementService);
 	if (deps.pmService !== undefined) setPmService(deps.pmService);

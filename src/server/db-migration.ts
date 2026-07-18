@@ -57,7 +57,11 @@ const AGENT_COLUMNS = [
 	// upgraded DBs; fresh DBs get them via the SqliteStore ensureTable()
 	// self-heal below.
 	{ key: "subagents", json: true },
-	{ key: "wikiAnchors", json: true },
+	// plan-08 §1: wikiAnchors column round-trip removed from AGENT_COLUMNS.
+	// The physical `wiki_anchors` column is still ALTER-added below so
+	// upgraded DBs keep their data; fresh DBs no longer create it (the
+	// wiki-system-redesign cutover drops the wikiAnchors field from the
+	// AgentRecord type surface and from all runtime callers).
 	// wiki-system-redesign plan-05 §1: new Wiki config schema. JSON-stored as
 	// single TEXT columns (parity with wikiAnchors); wikiPolicyRevision is INTEGER.
 	// Migration ALTERs these onto upgraded DBs; fresh DBs get them via the
@@ -109,48 +113,10 @@ const SESSION_COLUMNS = [
 	{ key: "contextWikiRootNodeId", column: "context_wiki_root_node_id" },
 ];
 
-const PROJECT_WIKI_COLUMNS = [
-	{ key: "projectId", column: "project_id" },
-	{ key: "parentId", column: "parent_id" },
-	// v0.8 (M2): global-tree type discriminator (header|intent|structure|project|memory).
-	// v0.8 (P1 §10.1): `type` column is DROPPED — position is now the type (project
-	// subtree = project/header/intent/structure; global memory type roots + their
-	// leaves = memory). Legacy `node_type` is kept below for back-compat reads.
-	// Migration (migrateWikiDetailToDisk) physically drops the `type` column on
-	// upgraded DBs after exporting `detail` to disk (RFC decision 23 refined in P1).
-	{ key: "path" },
-	{ key: "title" },
-	{ key: "summary" },
-	// v0.8 (P1 §10.1): `detail` column is DROPPED — wiki body content lives on
-	// disk at `~/.zero-core/wiki/<area>/<safe-name>.md`. The `docPointer` column
-	// below carries the per-node body file path (code-internal locator; NOT
-	// exposed to agents — they use nodeId). Migration exports legacy `detail`
-	// rows to disk BEFORE dropping the column, so no content is lost.
-	// v0.8 (M2): leaf pointer to the actual document on disk (code file /
-	// requirement doc / ADR). The doc itself is NOT stored in the tree.
-	{ key: "docPointer", column: "doc_pointer" },
-	// v0.8 (M2): provenance tag for structural assertions (structure/derived/
-	// confirmed) — archivist's own confidence marker, RFC §2.17a decision 33.
-	{ key: "provenance" },
-	// v0.8 (M2): traceability requirement IDs, RFC §4.6.
-	{ key: "requirementIds", column: "requirement_ids", json: true },
-	// v0.8 (M2): free-form relations (module contains / depends-on / implements).
-	{ key: "relations", json: true },
-	// v0.8 (P0 §3.3 / §10.1): undirected sibling links (nodeId array). NULL on
-	// read coalesces to [] in WikiStore. type/detail stay in this phase (P1
-	// moves detail to disk).
-	{ key: "links", json: true },
-	// v0.8 (M2): archivist divergence flags (req unimplemented / code capability
-	// not covered by any req), RFC §2.16.
-	{ key: "flags", json: true },
-	{ key: "lastUpdatedBy", column: "last_updated_by" },
-	{ key: "sourceReqId", column: "source_req_id" },
-	// Legacy discriminator kept so ProjectWikiStore's back-compat view can read
-	// it for pre-M2 rows.
-	{ key: "nodeType", column: "node_type" },
-	{ key: "createdAt", column: "created_at" },
-	{ key: "updatedAt", column: "updated_at" },
-];
+// plan-08 §1: PROJECT_WIKI_COLUMNS removed — fresh core.db no longer
+// creates project_wiki table; existing DBs keep their legacy table
+// (read-only history). All wiki CRUD now goes through wiki.db via
+// WikiNodeRepository / WikiLinkRepository (see src/server/wiki/).
 
 // v0.8 plan-03: wiki_scan_cursors store deleted; cursor moved into
 // wiki_repositories.indexed_revision in the new wiki.db(sub-01 schema).
@@ -451,171 +417,16 @@ function migrateCronScheduleToJson(db: Database.Database): void {
 	}
 }
 
-// v0.8 (M2): rebuild project_wiki when an upgraded DB still carries the
-// pre-M2 schema (`project_id TEXT NOT NULL` + UNIQUE(project_id, path)).
-// The global wiki tree needs project_id = NULL for the global root and
-// memory nodes, so the legacy NOT NULL constraint is fatal at startup.
-// Only rebuilds when the table is empty (lossless — archivist rescans
-// repopulate it); non-empty tables are left untouched to avoid data loss.
-//
-// v0.8 (P1): the rebuilt schema mirrors the new (post-P1) shape — no `detail`
-// / `type` columns. Content lives on disk (migrateWikiDetailToDisk handles
-// export + drop on non-empty legacy tables; this empty-rebuild path just
-// builds the new shape directly).
-function migrateWikiTableSchema(db: Database.Database): void {
-	try {
-		const cols = db.pragma("table_info(project_wiki)") as Array<{ name: string; notnull: number }>;
-		const projectIdCol = cols.find((c) => c.name === "project_id");
-		if (!projectIdCol || projectIdCol.notnull === 0) return; // already nullable — new schema
-		const rowCount = (db.prepare("SELECT count(*) AS n FROM project_wiki").get() as { n: number }).n;
-		if (rowCount > 0) {
-			console.warn(`[db-migration] project_wiki has legacy NOT NULL project_id constraint but ${rowCount} rows — leaving as-is to avoid data loss; global root/memory nodes will fail to insert.`);
-			return;
-		}
-		db.exec("DROP TABLE project_wiki");
-		db.exec(`CREATE TABLE project_wiki (
-			id TEXT PRIMARY KEY, project_id TEXT,
-			parent_id TEXT REFERENCES project_wiki(id),
-			node_type TEXT, path TEXT, title TEXT,
-			summary TEXT, doc_pointer TEXT, provenance TEXT,
-			requirement_ids TEXT, relations TEXT, links TEXT,
-			flags TEXT,
-			last_updated_by TEXT DEFAULT 'agent',
-			source_req_id TEXT, created_at TEXT, updated_at TEXT
-		)`);
-		console.log("[db-migration] rebuilt project_wiki to v0.8 schema (was empty, dropped NOT NULL project_id + legacy UNIQUE).");
-	} catch (e) {
-		console.warn("[db-migration] project_wiki schema migration skipped:", (e as Error).message);
-	}
-}
+// plan-08 §1: migrateWikiTableSchema removed — fresh core.db no longer
+// creates project_wiki; existing DBs keep their legacy table untouched
+// (plan-08 §1: 既有 Core DB 旧表保留不动). Production code never reads
+// or writes the legacy table after cutover.
 
-// v0.8 (P1 §10.1): export wiki body content from the legacy `detail` column to
-// disk (~/.zero-core/wiki/<area>/<safe-name>.md), populate `doc_pointer`, then
-// DROP the `detail` and `type` columns. Position (projectId / parentId chain)
-// now carries the type discriminator.
-//
-// This is the explicit, data-preserving migration promised by schema contract
-// §1.2 (plan-P1 §3): "detail 内容先导出磁盘再删列(否则丢数据)". Idempotent —
-// skips when `detail` is already absent.
-//
-// Path scheme (mirrors WikiStore.deriveContentFilePath):
-//   - node has project_id        → projects/<projectId>/<safeName>.md
-//   - node is under memory:* (parent path / own path) → memory/<agentId>/<safeName>.md
-//   - otherwise                  → knowledge/<safeName>.md
-//
-// `type` column is dropped in the same pass; positions are already correct
-// (legacy rows were written with proper parentId chains). Rows whose `type`
-// disagrees with their position are left where they live — we trust the
-// position over the legacy column (RFC §10.4: "type 按位置归位").
-function migrateWikiDetailToDisk(db: Database.Database): void {
-	try {
-		const cols = db.pragma("table_info(project_wiki)") as Array<{ name: string }> | undefined;
-		if (!cols || cols.length === 0) return;
-		const colNames = new Set(cols.map((c) => c.name));
-		if (!colNames.has("detail")) return; // already migrated / fresh DB
-		const hasType = colNames.has("type");
-
-		const wikiDir = join(ZERO_CORE_DIR, "wiki");
-		// Resolve a node's row for parent lookup (to detect memory subtree).
-		const getParentStmt = db.prepare("SELECT id, parent_id, path, project_id FROM project_wiki WHERE id = ?");
-		const updatePointerStmt = db.prepare(
-			"UPDATE project_wiki SET doc_pointer = ? WHERE id = ?",
-		);
-
-		// safe leaf name from path: replace ':' and '/' to keep it filename-safe
-		// while staying unique within the area dir. Node ids are stable, so we
-		// also fold a short id suffix to avoid collisions across project subtrees.
-		function safeName(id: string, path: string | null): string {
-			const p = (path ?? id).replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
-			const tail = id.length >= 8 ? id.slice(0, 8) : id;
-			return `${p || "node"}__${tail}.md`;
-		}
-
-		// Walk up to decide area: any ancestor with path "memory-root:*" or own
-		// project_id set tells us the area.
-		// Memory area is per-agent: memory/<agentId>/ (agentId = 2nd colon segment
-		// of the leaf's own path, e.g. `memory:<agentId>:<type>:<slug>`).
-		function memoryArea(row: { path: string | null }): string {
-			const agent = row.path ? row.path.split(":")[1] ?? "" : "";
-			const clean = agent.replace(/[:/\\]+/g, "_").replace(/^_+|_+$/g, "");
-			return join("memory", clean || "_shared");
-		}
-		function areaOf(
-			row: { id: string; parent_id: string | null; path: string | null; project_id: string | null },
-		): string {
-			if (row.project_id) return join("projects", row.project_id);
-			// Walk parent chain to detect memory subtree.
-			let cur: string | null = row.parent_id;
-			let guard = 0;
-			while (cur && guard++ < 32) {
-				const parent = getParentStmt.get(cur) as
-					| { id: string; parent_id: string | null; path: string | null; project_id: string | null }
-					| undefined;
-				if (!parent) break;
-				if (parent.project_id) return join("projects", parent.project_id);
-				if (parent.path && (parent.path.startsWith("memory-root:") || parent.id.startsWith("wiki-root:memory:"))) {
-					return memoryArea(row);
-				}
-				cur = parent.parent_id;
-			}
-			// Own path signals memory too.
-			if (row.path && row.path.startsWith("memory")) return memoryArea(row);
-			return "knowledge";
-		}
-
-		const rows = db.prepare(
-			"SELECT id, parent_id, path, project_id, detail, doc_pointer FROM project_wiki",
-		).all() as Array<{
-			id: string;
-			parent_id: string | null;
-			path: string | null;
-			project_id: string | null;
-			detail: string | null;
-			doc_pointer: string | null;
-	}>;
-
-	// mkdirSync / writeFileSync come from the top-level ESM import (node:fs).
-	let exported = 0;
-	let pointerFilled = 0;
-		for (const row of rows) {
-			// Skip synthetic roots — they carry no body content.
-			if (row.id.startsWith("wiki-root:")) continue;
-			const detail = row.detail;
-			// Compute canonical path; export only non-empty detail.
-			const area = areaOf(row);
-			const file = join(wikiDir, area, safeName(row.id, row.path));
-			if (detail && detail.trim().length > 0) {
-				mkdirSync(join(wikiDir, area), { recursive: true });
-				writeFileSync(file, detail, "utf-8");
-				exported++;
-				// Only stamp doc_pointer when there's actual content; otherwise leave it.
-				if (!row.doc_pointer) {
-					updatePointerStmt.run(file, row.id);
-					pointerFilled++;
-				}
-			}
-		}
-
-		// Now drop the columns. SQLite ≥3.35 supports ALTER TABLE DROP COLUMN.
-		try {
-			db.exec("ALTER TABLE project_wiki DROP COLUMN detail");
-		} catch (e) {
-			console.warn("[db-migration] DROP COLUMN detail failed (SQLite too old? leaving column inert):", (e as Error).message);
-		}
-		if (hasType) {
-			try {
-				db.exec("ALTER TABLE project_wiki DROP COLUMN type");
-			} catch (e) {
-				console.warn("[db-migration] DROP COLUMN type failed (SQLite too old? leaving column inert):", (e as Error).message);
-			}
-		}
-		console.log(
-			`[db-migration] wiki detail→disk: exported ${exported} body file(s), filled ${pointerFilled} doc_pointer(s), dropped detail${hasType ? " + type" : ""} column(s).`,
-		);
-	} catch (e) {
-		console.warn("[db-migration] wiki detail→disk migration skipped:", (e as Error).message);
-	}
-}
+// plan-08 §1: migrateWikiDetailToDisk removed — legacy project_wiki
+// table is no longer created or migrated. Existing DBs that already
+// had detail exported to disk + columns dropped are unaffected; DBs
+// that never ran the migration simply keep their legacy columns inert
+// (no production code reads them post-cutover).
 
 /**
  * 把存量 archivist 长期绑定 cron(source=`archivist-bind:<op>`)迁移到 project_work。
@@ -683,7 +494,6 @@ function migrateRoleTokensToAgent(db: Database.Database): void {
 		db.exec(`UPDATE requirements SET reviewer = 'agent' WHERE reviewer = 'analyst'`);
 		db.exec(`UPDATE requirement_messages SET sender = 'agent' WHERE sender IN ('analyst', 'lead')`);
 		db.exec(`UPDATE requirement_status_history SET triggered_by = 'agent' WHERE triggered_by IN ('analyst', 'lead')`);
-		db.exec(`UPDATE project_wiki SET last_updated_by = 'agent' WHERE last_updated_by = 'analyst'`);
 	} catch (err) {
 		log.warn("migration", `migrateRoleTokensToAgent failed (non-fatal): ${(err as Error).message}`);
 	}
@@ -709,7 +519,9 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 	// self-heal. AGENT_COLUMNS above lists both so SELECT/INSERT/UPDATE
 	// round-trip them.
 	safeAddColumn(db, "agents", "subagents", "TEXT");
-	safeAddColumn(db, "agents", "wiki_anchors", "TEXT");
+	// plan-08 §1: wiki_anchors column ALTER retained for upgraded DBs
+	// (keep existing data inert), but fresh DBs no longer create it
+	// (AGENT_COLUMNS round-trip removed above).
 	// wiki-system-redesign plan-05 §1: new Wiki config schema columns. ALTER
 	// for upgraded DBs; fresh DBs pick them up via SqliteStore.ensureTable()
 	// self-heal (AGENT_COLUMNS lists all three so they round-trip).
@@ -719,11 +531,8 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 	safeAddColumn(db, "agents", "wiki_context", "TEXT");
 	safeAddColumn(db, "agents", "wiki_policy_revision", "INTEGER");
 
-	// Wiki columns
-	// v0.8 (P0 §3.3): project_wiki.links — undirected sibling nodeId array
-	// (JSON TEXT). NULL on read coalesces to [] in WikiStore. ALTER for
-	// upgraded DBs; fresh DBs get it from the CREATE TABLE block above.
-	safeAddColumn(db, "project_wiki", "links", "TEXT");
+	// plan-08 §1: project_wiki.links ALTER removed — table no longer
+	// touched by production code (existing column on upgraded DBs stays).
 
 	// wiki-system-redesign plan-07 §3 兑现 sub-06 defer:PromptTemplate 字段化。
 	// 新增 templates.wiki_grants / wiki_context 列(JSON TEXT)。fresh DB 由
@@ -834,58 +643,9 @@ export function runMigrations(sessionDB: CoreDatabase): void {
 	} catch { /* ignore */ }
 	safeAddIndex(db, "projects", "idx_projects_workspace", "workspace_dir");
 
-	db.exec(`CREATE TABLE IF NOT EXISTS project_wiki (
-		id TEXT PRIMARY KEY, project_id TEXT,
-		parent_id TEXT REFERENCES project_wiki(id),
-		node_type TEXT, path TEXT, title TEXT,
-		summary TEXT, doc_pointer TEXT, provenance TEXT,
-		requirement_ids TEXT, relations TEXT, links TEXT,
-		flags TEXT,
-		last_updated_by TEXT DEFAULT 'agent',
-		source_req_id TEXT, created_at TEXT, updated_at TEXT
-	)`);
-	// v0.8 (M2): legacy UNIQUE(project_id, path) is dropped — global tree
-	// paths are unique within (parentId, path), not (projectId, path).
-	// Upgraded DBs created the table pre-M2 with `project_id TEXT NOT NULL`
-	// and UNIQUE(project_id, path); CREATE TABLE IF NOT EXISTS does NOT alter
-	// an existing table, so the legacy NOT NULL constraint survives and breaks
-	// insertion of the global root / memory nodes (project_id = NULL). Rebuild
-	// the table when it still carries the old constraint and holds no data
-	// (project_wiki is repopulated by archivist scans, so an empty rebuild is
-	// lossless; if rows exist we leave it alone to avoid data loss).
-	migrateWikiTableSchema(db);
-	// v0.8 (P1 §10.1): move wiki body content from the `detail` column to disk
-	// (~/.zero-core/wiki/<area>/<safe-name>.md), then DROP the `detail` and
-	// `type` columns. Position now carries the type. This MUST run AFTER the
-	// table exists and AFTER the legacy schema rebuild (above), so the export
-	// sees a single project_wiki table. Idempotent: skips when `detail` is
-	// already absent (fresh DB or already-migrated).
-	migrateWikiDetailToDisk(db);
-	safeAddIndex(db, "project_wiki", "idx_wiki_project", "project_id");
-	safeAddIndex(db, "project_wiki", "idx_wiki_parent", "parent_id");
-	// v0.8 §2.13: composite index for getByParentAndPath — the archivist's
-	// per-file upsert hot path. Without it each lookup scanned the whole table.
-	safeAddIndex(db, "project_wiki", "idx_wiki_parent_path", "parent_id, path");
-	// v0.8 (P1): idx_wiki_type referenced the now-dropped `type` column. Drop
-	// it explicitly (SQLite does not cascade DROP COLUMN to dependent indexes
-	// reliably across versions). Idempotent via try/catch.
-	try {
-		db.exec("DROP INDEX IF EXISTS idx_wiki_type");
-	} catch { /* ignore */ }
-
-	// v0.8 (M2): wiki scan cursor — per (archivist, project) git scan cursor
-	// (RFC §2.13, §4.2). (archivist_id, project_id) is the unique key.
-	db.exec(`CREATE TABLE IF NOT EXISTS wiki_scan_cursors (
-		id TEXT PRIMARY KEY,
-		archivist_id TEXT NOT NULL,
-		project_id TEXT NOT NULL,
-		last_scanned_ref TEXT,
-		last_full_scan_at TEXT,
-		created_at TEXT,
-		updated_at TEXT,
-		UNIQUE(archivist_id, project_id)
-	)`);
-	safeAddIndex(db, "wiki_scan_cursors", "idx_wsc_archivist_project", "archivist_id, project_id");
+	// plan-08 §1: legacy project_wiki CREATE TABLE / migrateWikiTableSchema /
+	// migrateWikiDetailToDisk / safeAddIndex calls removed. Fresh core.db
+	// no longer creates the table; existing DBs keep their (now inert) table.
 
 	db.exec(`CREATE TABLE IF NOT EXISTS requirements (
 		id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),

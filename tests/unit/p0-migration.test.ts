@@ -85,16 +85,18 @@ describe("P0 migration — fresh DB path", () => {
 		sessionDB.close();
 	});
 
-	test("fresh DB has all P0 columns on agents/crons/project_wiki (no fresh-missing column)", () => {
+	test("fresh DB has all P0 columns on agents/crons (no fresh-missing column)", () => {
 		const dbPath = join(tmpDir, "fresh-cols.db");
 		const sessionDB = new CoreDatabase(dbPath);
 		runMigrations(sessionDB);
 		const db = sessionDB.getDb();
 
-		// agents: subagents + wiki_anchors added; role_tag retained (legacy).
+		// agents: subagents added; role_tag retained (legacy).
+		// plan-08 §1: wiki_anchors column was REMOVED (legacy wikiAnchors field
+		// deleted from AgentRecord). Fresh DB must NOT create it.
 		const agentCols = columnsOf(db, "agents");
 		expect(agentCols.has("subagents")).toBe(true);
-		expect(agentCols.has("wiki_anchors")).toBe(true);
+		expect(agentCols.has("wiki_anchors"), "wiki_anchors must NOT exist on fresh DB post-sub-08").toBe(false);
 		expect(agentCols.has("role_tag")).toBe(true); // legacy retained (P0 §1.4)
 
 		// crons: schedule JSON + 5 telemetry columns.
@@ -106,8 +108,12 @@ describe("P0 migration — fresh DB path", () => {
 		expect(cronCols.has("last_error")).toBe(true);
 		expect(cronCols.has("next_run_at")).toBe(true);
 
-		// project_wiki: links column.
-		expect(columnsOf(db, "project_wiki").has("links")).toBe(true);
+		// plan-08 §1: project_wiki table is NO LONGER CREATED on fresh DB
+		// (legacy WikiStore cutover). Existing DBs keep their stale table.
+		const hasProjectWiki = db.prepare(
+			`SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name='project_wiki'`,
+		).get() as { n: number };
+		expect(hasProjectWiki.n, "fresh core.db must NOT create project_wiki").toBe(0);
 
 		// cron_runs columns.
 		const crCols = columnsOf(db, "cron_runs");
@@ -173,16 +179,21 @@ describe("P0 migration — legacy schema upgrade path", () => {
 		const db = sessionDB.getDb();
 
 		// New columns now present.
+		// plan-08 §1: wiki_anchors ALTER was REMOVED — legacy DBs that lacked
+		// it will not get it added; existing DBs that already have it keep it
+		// (no destructive drop). subagents + role_tag are still added.
 		const agentCols = columnsOf(db, "agents");
 		expect(agentCols.has("subagents")).toBe(true);
-		expect(agentCols.has("wiki_anchors")).toBe(true);
+		expect(agentCols.has("wiki_anchors"), "wiki_anchors ALTER removed in plan-08 §1").toBe(false);
 		expect(agentCols.has("role_tag")).toBe(true);
 
 		const cronCols = columnsOf(db, "crons");
 		for (const c of ["trigger_mode", "last_run_at", "last_status", "last_error", "next_run_at"]) {
 			expect(cronCols.has(c), `crons.${c}`).toBe(true);
 		}
-		expect(columnsOf(db, "project_wiki").has("links")).toBe(true);
+		// plan-08 §1: project_wiki.links ALTER was REMOVED. If the seeded
+		// legacy schema didn't have links, migrations no longer add it.
+		expect(columnsOf(db, "project_wiki").has("links"), "project_wiki.links ALTER removed in plan-08 §1").toBe(false);
 
 		// Agents row preserved.
 		const agentRow = db.prepare("SELECT name, role_tag FROM agents WHERE id = ?").get("agent-pm-1") as any;

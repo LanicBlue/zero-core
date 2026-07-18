@@ -48,7 +48,7 @@ import type { ProjectStore } from "./project-store.js";
 import type { CronStore } from "./cron-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { CoreDatabase } from "./core-database.js";
-import type { WikiStore } from "./wiki-node-store.js";
+
 import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import type { ProjectJobStore } from "./project-job-store.js";
 import { resolveSessionByRoleProject } from "./session-context-router.js";
@@ -98,7 +98,7 @@ export interface ManagementDeps {
 	 */
 	requirementStore?: RequirementStore;
 	sessionDB?: CoreDatabase;
-	wikiStore?: WikiStore;
+
 	archivistService?: WikiSkeletonService;
 	/** v0.8 §8.6: task-step store for the project-delete cascade. */
 	taskStepStore?: TaskStepStore;
@@ -141,7 +141,7 @@ export class ManagementService {
 	// management service before its service-layer dependencies) is preserved.
 	private requirementStore: RequirementStore | null;
 	private sessionDB: CoreDatabase | null;
-	private wikiStore: WikiStore | null;
+
 	private archivistService: WikiSkeletonService | null;
 	// v0.8: task-step store for the project-delete cascade (§8.6). Late-bound.
 	private taskStepStore: TaskStepStore | null;
@@ -161,7 +161,7 @@ export class ManagementService {
 		this.cronStore = deps.cronStore ?? null;
 		this.requirementStore = deps.requirementStore ?? null;
 		this.sessionDB = deps.sessionDB ?? null;
-		this.wikiStore = deps.wikiStore ?? null;
+
 		this.archivistService = deps.archivistService ?? null;
 		this.taskStepStore = deps.taskStepStore ?? null;
 		this.projectJobStore = null;
@@ -188,14 +188,8 @@ export class ManagementService {
 	setCoreDatabase(db: CoreDatabase): void { this.sessionDB = db; }
 	private agentService: AgentService | null = null;
 	setAgentService(a: AgentService): void { this.agentService = a; }
-	setWikiStore(wiki: WikiStore): void {
-		this.wikiStore = wiki;
-		// backfill:把存量 agent 的 memory 根 title 同步成 agent 名字(旧 DB 里
-		// 可能还是 "Memory: <agentId>")。幂等,新建的由 createAgent 处理。
-		for (const a of this.agentStore.list()) {
-			this.wikiStore?.ensureMemoryAgentRoot(a.id, a.name);
-		}
-	}
+	// plan-08 §1: legacy setWikiStore removed — wikiStoreV2 (setWikiServiceV2) is the sole path.
+	setWikiStore(_wiki: unknown): void { /* no-op (plan-08 §1) */ }
 	/**
 	 * wiki-system-redesign plan-05 §3:Wiki v2 service setter(sub-02 WikiService)。
 	 * 用于在新 wiki.db 中 ensure Agent memory root(create/rename)与 archive
@@ -261,11 +255,7 @@ export class ManagementService {
 		const project = this.projectStore.create(input);
 		// §8.3 synchronous: ensure the empty wiki subtree root exists so the
 		// project is immediately usable (archivist fills it in the background).
-		try {
-			this.wikiStore?.ensureProjectSubtree(project.id, project.name);
-		} catch (err) {
-			log.warn("management", `ensureProjectSubtree failed for ${project.id}:`, (err as Error).message);
-		}
+		// plan-08 §1: legacy ensureProjectSubtree call removed; WikiProjectIndexer handles binding lazily.
 		// §8.3 asynchronous: kick the archivist background scan. Best-effort —
 		// archivist might not be wired (tests). Failures log but never block
 		// project creation.
@@ -351,25 +341,11 @@ export class ManagementService {
 	 * path that didn't cascade (pre-fix tool delete). Idempotent — call at
 	 * startup; a no-op once no orphans remain. Returns the count removed.
 	 */
-	purgeOrphanProjectSubtrees(): number {
-		if (!this.wikiStore) return 0;
-		const liveProjectIds = new Set(this.projectStore.list().map((p) => p.id));
-		let removed = 0;
-		for (const node of this.wikiStore.list()) {
-			if (
-				node.id.startsWith("wiki-root:") &&
-				node.id !== "wiki-root:global" &&
-				node.id !== "wiki-root:projects" &&
-				!node.id.startsWith("wiki-root:memory") &&
-				node.projectId &&
-				!liveProjectIds.has(node.projectId)
-			) {
-				this.wikiStore.deleteByProject(node.projectId);
-				removed++;
-			}
-		}
-		return removed;
-	}
+	/**
+	 * plan-08 §1: legacy orphan-wiki-subtree purge removed (old wikiStore deleted).
+	 * wiki.db cleanup happens via the indexer + management cascade.
+	 */
+	purgeOrphanProjectSubtrees(): number { return 0; }
 
 	/**
 	 * Delete a Project with the FULL cascade (§8.6). This is the single source
@@ -400,8 +376,9 @@ export class ManagementService {
 					this.requirementStore.delete(r.id);
 				}
 			}
-			// wiki subtree (root + all descendants + body files)
-			this.wikiStore?.deleteByProject(id);
+			// plan-08 §1: legacy wiki subtree cleanup removed (wikiStore deleted).
+			// wiki.db project nodes are archived via WikiRepositoryStore unbind or
+			// indexer rebuild — not via the CoreDB cascade.
 			// project-scoped crons
 			if (this.cronStore) {
 				for (const c of this.cronStore.list()) {
@@ -461,37 +438,10 @@ export class ManagementService {
 		let lastUpdated: string | null = null;
 		let scanPhase: string | null = null;
 		let scanProgress: number | null = null;
-		if (this.wikiStore) {
-			const nodes = this.wikiStore.listByProject(projectId);
-			nodeCount = nodes.length;
-			for (const n of nodes) {
-				if (n.updatedAt && (lastUpdated === null || n.updatedAt > lastUpdated)) {
-					lastUpdated = n.updatedAt;
-				}
-			}
-			// Progress: surface structure-node presence as a coarse 0/0.5/1
-			// signal. Empty subtree (just the root) → 0; root + structure
-			// nodes → 0.5; root + structure + detail/header nodes → 1. The
-			// fine-grained cursor-driven phase lives in P1/P7 (archivist
-			// reports it); here we only project what the wiki tree already
-			// knows so the dashboard has something to show.
-			const structureCount = nodes.filter((n) => n.type === "structure" || n.type === "project").length;
-			const detailCount = nodes.filter((n) => n.type === "header" || n.type === "intent").length;
-			if (structureCount > 0 && detailCount > 0) {
-				scanProgress = 1;
-				scanPhase = "detail";
-			} else if (structureCount > 0) {
-				scanProgress = 0.5;
-				scanPhase = "structure";
-			} else if (nodeCount > 0) {
-				// Only the empty root exists — scan hasn't filled anything yet.
-				scanProgress = 0;
-				scanPhase = null;
-			} else {
-				scanProgress = 0;
-				scanPhase = null;
-			}
-		}
+		// plan-08 §1: wikiSummary computation moved to wiki.db via WikiRepositoryStore
+		// (binding status / indexed revision / node count). Caller (project-router /
+		// UI container view) reads via wiki-admin-router /repositories endpoints.
+		// Defaults stay zero so the container view still compiles.
 
 		// activeSessions — sessions whose context.projectId matches. We list
 		// all sessions (the table is small in practice) and project to a thin
@@ -575,7 +525,6 @@ export class ManagementService {
 	createAgent(input: Omit<AgentRecord, "id" | "createdAt" | "updatedAt">): AgentRecord {
 		const rec = this.agentStore.create(input);
 		// 立刻建 memory 根并按 agent 名字命名(不等 extractor 懒建)。
-		this.wikiStore?.ensureMemoryAgentRoot(rec.id, rec.name);
 		// wiki-system-redesign plan-05 §3:在新 wiki.db 也 ensure memory root。
 		// 幂等 + 写确定性 summary + attributes.display_name(canonical path 不变)。
 		// fire-and-forget —— Core DB 已 commit,跨库不事务(plan-05 §3「Core DB
@@ -622,8 +571,6 @@ export class ManagementService {
 		// body file); renameMemoryAgentDiskDir moves the children's body files
 		// so the whole per-agent folder follows the new name.
 		if (input.name !== undefined && oldName !== undefined && oldName !== input.name) {
-			this.wikiStore?.ensureMemoryAgentRoot(id, input.name);
-			this.wikiStore?.renameMemoryAgentDiskDir(id, oldName);
 			// wiki-system-redesign plan-05 §3:在新 wiki.db 也更新 display_name /
 			// summary —— canonical path 不变(wiki-root/memory/<stable-agent-id>),
 			// 整棵子树不移动。幂等。

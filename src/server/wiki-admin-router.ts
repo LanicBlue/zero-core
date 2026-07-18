@@ -1032,6 +1032,71 @@ export function createWikiAdminRouter(deps: WikiAdminRouterDeps): Router {
 		res.json({ ok: true, result });
 	});
 
+	// =========================================================================
+	// §audit — query audit log (plan-07 sub-08 defer 落地点)
+	//
+	// publish/addresses/repositories 已经在写 wiki_audit_log(policy.publish.
+	// grants/context + address.* + repository.*),此前无 query endpoint。
+	// 本 endpoint 让管理 UI 能按 node_path / actor / 时间窗查询历史。
+	// 只读,不开 transaction,无副作用。
+	// =========================================================================
+
+	router.post("/audit/query", (req, res) => {
+		const forged = bodyHasForgedIdentity(req.body);
+		if (forged.length > 0) {
+			res.status(400).json(errorBody("INVALID_REQUEST", `forged identity field(s) rejected: ${forged.join(", ")}`));
+			return;
+		}
+		try {
+			const body = req.body ?? {};
+			// Optional filters; all empty → recent N (default 100, max 500).
+			const nodePath = typeof body.nodePath === "string" ? body.nodePath : null;
+			const actorAgentId = typeof body.actorAgentId === "string" ? body.actorAgentId : null;
+			const since = typeof body.since === "string" ? body.since : null;
+			const until = typeof body.until === "string" ? body.until : null;
+			const action = typeof body.action === "string" ? body.action : null;
+			const limitRaw = typeof body.limit === "number" ? body.limit : 100;
+			const limit = Math.max(1, Math.min(Math.floor(limitRaw), 500));
+
+			// 直接走 WikiAuditRepository 现有 primitives(node_path / actor /
+			// time window),action 用 LIKE 过滤(支持 prefix 如 'address.%' /
+			// 'policy.%')。如果同时给了多个 filter,以最 narrow 的那个 primitive
+			// 起手再 JS 端二次过滤 —— audit 表预期量级在万级以下,二次过滤可接受。
+			let rows;
+			if (nodePath) {
+				rows = deps.auditRepo.listByNodePath(nodePath, limit);
+			} else if (actorAgentId) {
+				rows = deps.auditRepo.listByActor(actorAgentId, limit);
+			} else {
+				rows = deps.auditRepo.listByTimeWindow({ since, until, limit });
+			}
+			// 二次过滤(精确性):action / since / until 在选了 nodePath/actor
+			// primitive 时仍要应用,保证 caller 拿到的是 AND 语义。
+			const sinceTs = since ? Date.parse(since) : null;
+			const untilTs = until ? Date.parse(until) : null;
+			const filtered = rows.filter((r) => {
+				if (action) {
+					// action 可能是 prefix('address.') 也可能是全名('address.create')。
+					if (action.endsWith(".") && !r.action.startsWith(action)) return false;
+					if (!action.endsWith(".") && r.action !== action) return false;
+				}
+				if (sinceTs !== null) {
+					const ts = Date.parse(r.created_at);
+					if (Number.isNaN(ts) || ts < sinceTs) return false;
+				}
+				if (untilTs !== null) {
+					const ts = Date.parse(r.created_at);
+					if (Number.isNaN(ts) || ts > untilTs) return false;
+				}
+				if (actorAgentId && r.actor_agent_id !== actorAgentId) return false;
+				return true;
+			});
+			res.json({ ok: true, result: { items: filtered, count: filtered.length } });
+		} catch (err) {
+			res.status(500).json(errorBody("INTERNAL", (err as Error).message));
+		}
+	});
+
 	return router;
 }
 

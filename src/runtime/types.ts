@@ -596,7 +596,7 @@ export interface SessionConfig {
 		activeRequirementId?: string;        // Lead/sub-agent use
 	};
 	/** Injected into ToolExecutionContext for workflow tools */
-	wikiStore?: any;                       // ProjectWikiStore
+	// plan-08 §1: legacy wikiStore field removed from SessionConfig;
 	requirementStore?: any;                // RequirementStore
 	/**
 	 * v0.8 (M0): session context bundle (D-B) carried by the SessionConfig.
@@ -604,14 +604,6 @@ export interface SessionConfig {
 	 * overrides per-call via DelegateTaskOptions.contextOverride.
 	 */
 	contextBundle?: SessionContextBundle;
-	/**
-	 * v0.8 (P1 §10.6): the agent's free wiki anchors (copied from
-	 * AgentRecord.wikiAnchors at session build time). Combined with the
-	 * auto-derived memory + project anchors (from contextBundle) this forms
-	 * the session's full anchor set — used by both the scope guard (visible
-	 * nodeId union) and the prompt injector (system + context channels).
-	 */
-	wikiAnchors?: import("../shared/types.js").AgentRecord["wikiAnchors"];
 	/**
 	 * sub-7 (work-context 拆解到三通道): server-built closure that renders the
 	 * Project / Requirement / Wiki Baseline text for the **system** channel
@@ -914,14 +906,8 @@ export interface ToolExecutionContext {
 	//   toolUsageStore(wrapper recordToolUsage 读)/ rateLimiter /
 	//   toolConfig(rate config)/ 身份字段(emit/agentId/sessionId/turnSeq)。
 	projectId?: string;
-	/**
-	 * v0.8 (读写同界 / pure anchor model): this session's resolved wiki anchor
-	 * node ids (auto memory + auto project/global + free wikiAnchors). The Wiki
-	 * tool uses this set as BOTH its read scope and write scope — what you can
-	 * see is what you can edit. Zero/global sessions (no projectId) include
-	 * WIKI_GLOBAL_ROOT_ID here → whole tree read+write. See wiki-anchor-injection.
-	 */
-	wikiAnchorNodeIds?: string[];
+	// plan-08 §1: legacy wikiAnchorNodeIds field removed from CallerCtx;
+	// Wiki v2 tool reads callerCtx.wikiAccess (CompiledWikiAccess) only.
 	projectPath?: string;               // Project root directory path
 	activeRequirementId?: string;       // Current requirement ID for orchestration
 	// v0.8 (M0): createRoleLoop removed from context. Sub-agent dispatch

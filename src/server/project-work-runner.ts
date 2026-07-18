@@ -28,7 +28,7 @@ import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { ProjectWorkStore } from "./project-work-store.js";
-import type { WikiStore } from "./wiki-node-store.js";
+
 import type { CoreDatabase } from "./core-database.js";
 import { resolveSessionByRoleProject, type WikiRootResolver } from "./session-context-router.js";
 import { agentHasTool } from "./wiki-operations.js";
@@ -43,7 +43,7 @@ export interface ProjectWorkRunnerDeps {
 	projectStore: ProjectStore;
 	projectWorkStore: ProjectWorkStore;
 	sessionDB: CoreDatabase;
-	wikiStore?: WikiStore;
+	
 	resolveWikiRoot?: WikiRootResolver;
 }
 
@@ -106,7 +106,7 @@ export class ProjectWorkRunner {
 			projectId: work.projectId,
 			projectPath: workspaceDir,
 			projectName,
-			wikiStore: this.deps.wikiStore,
+			
 			activeRequirementId: opts.requirementId,
 			workId: work.id,
 		}, "work");

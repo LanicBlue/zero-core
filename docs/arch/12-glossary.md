@@ -1,5 +1,31 @@
 # 12 · 术语表
 
+> **⚠ plan-08 cutover 后此文档部分过时** —— Wiki 相关术语已大量替换:
+>
+> - **Wiki DB / wiki.db**(plan-01):独立 SQLite 库,7 张表(`wiki_nodes` /
+>   `wiki_links` / `wiki_addresses` / `wiki_repositories` / `wiki_source_bindings` /
+>   `wiki_nodes_fts` / `wiki_audit_log`)。**取代**旧 `project_wiki` 表(core.db 里)。
+> - **Wiki v2 tool**(plan-04):9 个 action(expand/read/search/create/update/delete/
+>   link/unlink/move),数据面用。**取代**旧 `Wiki` v1(expand/search/docRead/docWrite/docEdit)。
+> - **Grants + Context**(plan-05/07):`wikiGrants`(显式 scope + actions) +
+>   `wikiContext`(prompt 注入规则);在 CallerCtx 中编译。**取代**旧 `wikiAnchors`
+>   anchor 集合(读写同界)。
+> - **Logical address**(plan-02):`memory://` / `project://` / `runtime://...`;
+>   动态地址运行时解析。**取代**旧 nodeId / short id `#xxxxxxxx` 寻址。
+> - **Canonical path**:`wiki-root/<area>/<...>/<name>`;节点唯一标识(active path
+>   partial unique index)。**取代**旧 title path。
+> - **Project git mirror**(plan-03):`wiki_repositories` + `wiki_source_bindings`
+>   表跟踪 git repo。**取代**旧 `header:/intent:/structure:` provenance 节点 +
+>   `WikiScanCursorStore`。
+> - **BackupService**(plan-08 §3):SQLite Backup API + manifest sidecar JSON;
+>   `/api/wiki-maintain` 维护 endpoint。
+> - **Protected paths**(plan-08 §2):`core/protected-paths.ts` 集中表 + `tools/wiki-path-guard.ts`
+>   重写;Agent FS 工具统一断言。
+>
+> 下文凡是描述旧 `WikiStore` / `wiki-anchor-injection` / `wikiAnchors` / `MemoryNodeStore` /
+> `project_wiki` 表 / 磁盘镜像 markdown 树 / `WikiScanCursorStore` / `header:/intent:/structure:`
+> 的术语条目,都视为 v0.8 历史(plan-08 §1 cutover 后已退役)。
+>
 > 本文列出 Zero-Core 中使用的术语、缩写、内部命名。
 
 ## 0. 术语主题关联图
@@ -228,7 +254,7 @@ graph TB
 - **MCPScanner**：扫描外部应用配置（Claude Desktop / Cursor / ...）。
 - **MemoryRecall / MemoryNote**：已退役的旧记忆工具名；当前 `ALL_TOOLS` 不再注册，记忆操作走 `Wiki` 工具。
 - **MemoryStore**：⚠️ **已删除**(v0.8 清理僵尸 store)。原 `server/memory-store.ts` 持有 `memory_entities` / `memory_relations` 两张构造自建表。**构造时 eager new**(`core-database.ts:70`)+ v0.7 `memory.json` 一次性迁移(`db-migration.ts:586`)曾是唯一写入路径;**运行时零写入者** —— 唯一消费者 `runtime/mcp-tools/memory-tools.ts` 的 `memoryReadTool`/`memoryWriteTool` 自 v0.8 P2 §11.6 起从 `tools/index.ts` **取消注册**,所以 `getMemoryStore()` 在生产环境永远不会被 Agent 工具调到。v0.8 后续清理已执行:删除 `memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `MemoryStore` 类 + 两表(`memory_entities` / `memory_relations` 已由 db-migration DROP)+ `memory.json` 迁移分支 + CoreDatabase getter。**不要**把它当活跃系统,也不要与仍存活的 **MemoryNodeStore** 混为一谈 —— 二者数据不互通、互不引用、互不依赖。详见 [06 §2.7](./06-knowledge-subsystems.md) "三套数据库知识系统的对比矩阵"。
-- **MemoryNodeStore**：`server/memory-node-store.ts`(活的,仍在运行时被调用),持有 `memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`(FTS5) 四张构造自建表(`init()` 自建,不进 db-migration)。MemoryNodeStore **仍在运行时被调用**(`runtime/hooks/compression-hooks.ts:153` 在 wiki 写失败时回退写它 + `server/memory-node-router.ts` 暴露 `/api/memory-nodes` REST),所以是 legacy 但**活**。与已删除的 MemoryStore **曾是兄弟而非父子** —— 各自 eager new、各自 `init()`、表结构无任何关联(MemoryStore 那侧现已全删)。**不进** db-migration.ts 的 `*_COLUMNS` 数组,改 schema 要去 `init()`。
+- **MemoryNodeStore**：⚠️ **plan-08 §1 cutover 已删除**。原 `server/memory-node-store.ts` 持有 `memory_nodes` / `memory_subjects` / `memory_edges` / `memory_nodes_fts`(FTS5) 四张构造自建表。早期(v0.8 M5)作为 wiki 写失败时的回退,plan-08 cutover 后**整条退役** —— 记忆写入只走新 `wiki.db.wiki_nodes`(memory 子树),不再回退到任何旧 store。`/api/memory-nodes` REST endpoint 也已删。详见 [06 §0](./06-knowledge-subsystems.md) Wiki v2。
 - **MockLanguageModel**：测试用 mock LLM。`runtime/mock-language-model.ts`。
 - **ModelRegistry**：模型元数据（context window / max tokens），OpenRouter + 本地正则回填。
 
@@ -339,5 +365,5 @@ graph TB
 - **Zod**：TypeScript 优先的 schema 验证库，用于工具 inputSchema + IPC 类型。
 - **Zustand**：React 状态管理库，10 个 store。
 
-- **Wiki Anchors**：当前 Agent 记忆与项目知识的实际注入机制，由 wiki-anchor-injection.ts 渲染到 system/context。
+- **Wiki Anchors**：⚠️ **plan-08 §1 cutover 已删除**。原 `wiki-anchor-injection.ts` 渲染的 system/context 锚点(`wikiAnchors` / `wikiAnchorNodeIds`),在 v0.8 用于定义 read/write 同界的 scope。**plan-05/07 替换为 `wikiGrants` + `wikiContext`** —— 在 CallerCtx 中编译为 `WikiAccess`,scope 由 grants 决定(不再由 anchors 决定),prompt 注入由 context rules 决定。`wiki-anchor-injection.ts` 文件已物理删除。详见 [06 §0.3](./06-knowledge-subsystems.md)。
 - **RAG hooks**：legacy optional KB 注入 hook；默认 Agent 会话未注入 getRagContext 时不生效。

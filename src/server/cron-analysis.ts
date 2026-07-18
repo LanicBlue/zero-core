@@ -42,7 +42,7 @@
 import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
-import type { WikiStore } from "./wiki-node-store.js";
+
 import type { ArchivistGit } from "./archivist-git.js";
 import { isGitAwarePrompt, stripGitAwareSentinel, agentHasTool } from "./wiki-operations.js";
 import type { CoreDatabase } from "./core-database.js";
@@ -385,7 +385,7 @@ export interface CronAnalysisDeps {
 	 * wikiStore/projectContext(去-role)。未注入时 project cron 退回 sendPrompt
 	 * (无 wiki 维护能力,仅观察/巡检)。
 	 */
-	wikiStore?: WikiStore;
+	
 	/**
 	 * v0.8 阶段3 git-aware cron:触发前用 archivistGit.getCurrentMainRef 检查
 	 * git main ref 变化,无变化跳过(实现"git 变更即时响应",复用 cron 轮询)。
@@ -915,13 +915,13 @@ export class CronAnalysisManager {
 			effectivePrompt = stripGitAwareSentinel(basePrompt);
 			newGitRef = ref; // 跑成功后回写
 		}
-		if (scope.projectId && this.deps.wikiStore) {
+		if (scope.projectId) {
 			const project = this.deps.projectStore.get(scope.projectId);
 			const result = await this.deps.agentService.sendProjectPrompt(activeAgent.id, sessionId, effectivePrompt, {
 				projectId: scope.projectId,
 				projectPath: project?.workspaceDir ?? scope.workspaceDir,
 				projectName: project?.name ?? "",
-				wikiStore: this.deps.wikiStore,
+				
 				workId: cron.workId,
 			}, "cron");
 			// A 方案:session 正在跑 → skip,且不更新 lastGitRef(下次 cron 再试,避免漏处理变更)。

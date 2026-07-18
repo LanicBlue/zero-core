@@ -35,7 +35,7 @@
 import type { AgentService } from "./agent-service.js";
 import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
-import type { ProjectWikiStore } from "./project-wiki-store.js";
+
 import type { RequirementStore } from "./requirement-store.js";
 import type { TaskStepStore } from "./task-step-store.js";
 import type { TemplateStore } from "./template-store.js";
@@ -53,7 +53,7 @@ export class AnalystService {
 	private agentService: AgentService;
 	private agentStore: AgentStore;
 	private projectStore: ProjectStore;
-	private wikiStore: ProjectWikiStore;
+	
 	private requirementStore: RequirementStore;
 	private taskStepStore: TaskStepStore | null;
 	private templateStore: TemplateStore;
@@ -65,7 +65,7 @@ export class AnalystService {
 		agentService: AgentService;
 		agentStore: AgentStore;
 		projectStore: ProjectStore;
-		wikiStore: ProjectWikiStore;
+		
 		requirementStore: RequirementStore;
 		taskStepStore?: TaskStepStore;
 		templateStore: TemplateStore;
@@ -73,7 +73,7 @@ export class AnalystService {
 		this.agentService = deps.agentService;
 		this.agentStore = deps.agentStore;
 		this.projectStore = deps.projectStore;
-		this.wikiStore = deps.wikiStore;
+		
 		this.requirementStore = deps.requirementStore;
 		this.taskStepStore = deps.taskStepStore ?? null;
 		this.templateStore = deps.templateStore;
@@ -103,7 +103,7 @@ export class AnalystService {
 		}
 
 		// If project already has wiki data, switch to incremental
-		const existingNodes = this.wikiStore.listByProject(projectId);
+		const existingNodes: { id: string }[] = []; // plan-08 §1: legacy wikiStore removed; incremental path always taken
 		if (existingNodes.length > 0) {
 			log.agent("Analyst: project already has wiki data, switching to incremental:", projectId);
 			return this.runIncrementalAnalysis(projectId);

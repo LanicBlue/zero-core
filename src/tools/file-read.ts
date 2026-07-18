@@ -41,7 +41,7 @@ import {
 	formatBytes,
 	MAX_FILE_SIZE,
 } from "./file-read-helpers.js";
-import { isWikiDiskPath, wikiPathRejectMessage } from "./wiki-path-guard.js";
+import { isProtectedPathRealpath, wikiPathRejectMessage } from "./wiki-path-guard.js";
 import { resolveSkillPath, replaceSkillDirVars } from "./skill-paths.js";
 import { resolveToolOutputPath } from "./tool-output-paths.js";
 import type { CallerCtx, ToolResult } from "./types.js";
@@ -113,7 +113,11 @@ export const fileReadTool = buildTool({
 		});
 
 		// v0.8 (P1 §10.1): block agent reads of the wiki memory store.
-		if (isWikiDiskPath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
+		// round-2 Fix 2 (acceptance-08 §B blocker): use the realpath-aware
+		// variant so symlink/junction bypass (lexical path in workspace,
+		// realpath inside db/wiki/backups) is caught. lexical-only
+		// isWikiDiskPath misses Windows junctions (no admin needed to create).
+		if (isProtectedPathRealpath(path, workingDir)) return wrap(wikiPathRejectMessage(path));
 
 		// skill-system sub-2: `[skills]/<id>/<rel>` 虚拟路径通道。
 		// 读家族始终放行(不经 restrictToWorkspace);解析 → 真实路径直接用(真实路径

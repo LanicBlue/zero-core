@@ -65,9 +65,9 @@ import { createHealthRouter } from "./health-router.js";
 import { createAttachmentRouter } from "./attachment-router.js";
 import { ProjectStore } from "./project-store.js";
 import { RequirementStore } from "./requirement-store.js";
-import { ProjectWikiStore } from "./project-wiki-store.js";
+
 // v0.8 (M2): global wiki memory tree + archivist.
-import { WikiStore } from "./wiki-node-store.js";
+
 import { ArchivistGit } from "./archivist-git.js";
 import { WikiSkeletonService } from "./wiki-skeleton-service.js";
 // plan-03 §1/§6: WikiProjectIndexer replaces the legacy scanning duty of
@@ -97,7 +97,7 @@ import { TaskStepStore } from "./task-step-store.js";
 import { createProjectRouter } from "./project-router.js";
 import { createRequirementRouter } from "./requirement-router.js";
 import { createFlowActions } from "./flow-actions.js";
-import { createWikiRouter } from "./project-wiki-router.js";
+
 // v0.8 (P8 §10.9): global wiki memory-tree browser endpoints
 // (list-by-anchors / nodes/:id/detail / search + project-scoped workspace-doc).
 // wiki-system-redesign plan-06: 新 wiki browser router(9 个结构化 POST endpoint)
@@ -106,6 +106,10 @@ import { createWikiBrowserRouter, createWorkspaceDocHandler } from "./wiki-route
 // wiki-system-redesign plan-07 §1:管理面 router(addresses/repos/grants/
 // context;validate/preview/publish)。authority 由 server host 注入。
 import { createWikiAdminRouter } from "./wiki-admin-router.js";
+// wiki-system-redesign plan-08 §3 + §5:备份/恢复 + 维护管理 router(integrity
+// / foreign-keys / fts rebuild / optimize / backup/* / legacy cleanup)。
+// 不走 Agent shell;仅供管理 UI / CLI 调用。
+import { createWikiMaintenanceRouter } from "./wiki-maintenance-router.js";
 import { AnalystService } from "./analyst-service.js";
 import { scanExternalMcpConfigs, mergeDetectedServers } from "./mcp-scanner.js";
 import { ALL_TOOLS, registerRuntimeTools } from "../tools/index.js";
@@ -199,29 +203,9 @@ export async function startServer(options?: StartServerOptions) {
 		});
 	});
 
-	// v0.8 (M2): single global WikiStore (the memory tree) — created EARLY so
-	// the M5 extraction hooks (registered per-loop below via setHookDeps) can
-	// point at it. The back-compat ProjectWikiStore view is created alongside;
-	// legacy IPC/router/renderer keep using it.
-	const wikiStoreGlobal = new WikiStore(sessionDB);
-
-	// memory-archive-fixes sub-2: one-time startup cleanup of legacy memory
-	// data — delete the old global "memory" container (path=memory) + its
-	// orphaned leaves, and remove orphan disk dirs under wiki/memory/ with no
-	// backing per-agent root row (residue from the removed per-topic scheme +
-	// early per-agent experiments). Per-agent root dirs (with DB rows) are
-	// preserved. Runs synchronously BEFORE any session uses the store so the
-	// tree state is clean; best-effort (failures log + continue).
-	try {
-		const cleanup = wikiStoreGlobal.cleanupLegacyMemoryData();
-		if (cleanup.deletedContainer || cleanup.orphanDirs.length > 0) {
-			console.error(
-				`[server] Legacy memory cleanup: containerDeleted=${cleanup.deletedContainer} leaves=${cleanup.deletedLeaves} orphanDirs=[${cleanup.orphanDirs.join(", ")}]`,
-			);
-		}
-	} catch (err) {
-		console.error(`[server] Legacy memory cleanup failed:`, (err as Error)?.message ?? err);
-	}
+	// plan-08 §1: legacy global WikiStore (sessions.db project_wiki table) removed.
+	// New wiki lives in db/wiki.db — managed by WikiService + WikiNodeRepository
+	// (constructed below). data-change-hub no longer broadcasts project_wiki.
 
 	// compression-archive-simplify sub-5: the M5 extraction-hooks wiring is
 	// DELETED along with extractor-a-service.ts (ExtractorA body — wiki
@@ -243,8 +227,7 @@ export async function startServer(options?: StartServerOptions) {
 	// Multi-Agent Workflow stores
 	const projectStore = new ProjectStore(sessionDB);
 	const requirementStore = new RequirementStore(sessionDB);
-	// ProjectWikiStore back-compat view over the same rows as wikiStoreGlobal.
-	const wikiStore = new ProjectWikiStore(wikiStoreGlobal);
+	// plan-08 §1: legacy ProjectWikiStore back-compat view removed.
 	// plan-03 §6: wiki_scan_cursors deleted; cursor moved into
 	// wiki_repositories.indexed_revision. (Legacy wiki_scan_cursors table on
 	// existing core DBs is no longer read or written.)
@@ -267,7 +250,7 @@ export async function startServer(options?: StartServerOptions) {
 	// Test-mode seed — populate mock provider + agent when ZERO_CORE_TEST_FIXTURE is set
 	if (process.env.ZERO_CORE_TEST_FIXTURE) {
 		const { seedTestEnvironment } = await import("../core/test-seed.js");
-		seedTestEnvironment(sessionDB, agentStore, providerStore, wikiStoreGlobal, projectStore, projectWorkStore);
+		seedTestEnvironment(sessionDB, agentStore, providerStore, projectStore, projectWorkStore);
 		workspaceConfig = loadWorkspaceConfig(sessionDB);
 	}
 
@@ -331,7 +314,7 @@ export async function startServer(options?: StartServerOptions) {
 	// SessionConfig closures (workContextSystemSection / stepsProgressSection)
 	// from them — runtime never imports the stores directly.
 	agentService.setWorkContextStores({
-		projectStore, requirementStore, wikiStore, taskStepStore, projectWorkStore,
+		projectStore, requirementStore, taskStepStore, projectWorkStore,
 	});
 
 	// v0.8 (P3): ManagementService (renamed from ZeroAdminService) —
@@ -343,7 +326,7 @@ export async function startServer(options?: StartServerOptions) {
 	const management = new ManagementService({
 		agentStore, projectStore, cronStore,
 		templateStore,
-		requirementStore, sessionDB, wikiStore: wikiStoreGlobal,
+		requirementStore, sessionDB,
 	});
 	management.setTaskStepStore(taskStepStore);
 	management.setProjectJobStore(projectJobStore);
@@ -358,13 +341,10 @@ export async function startServer(options?: StartServerOptions) {
 	// is now true exactly on a truly-empty DB. fresh-db-seed.ts re-checks the
 	// condition internally and no-ops on any non-empty table, so a re-seed
 	// can never duplicate.
-	const { seedFreshDbDefaults, ensureWikiSkeleton } = await import("./fresh-db-seed.js");
-	seedFreshDbDefaults({ agentStore, wikiStore: wikiStoreGlobal, management });
-	// Unconditionally ensure the wiki skeleton on every startup (idempotent).
-	// seedFreshDbDefaults above is fresh-only; this reaches EXISTING DBs so
-	// structural seed changes (e.g. knowledge/workflow/software-dev reorg,
-	// legacy-position migration) apply without a re-seed.
-	ensureWikiSkeleton(wikiStoreGlobal);
+	const { seedFreshDbDefaults } = await import("./fresh-db-seed.js");
+	seedFreshDbDefaults({ agentStore, management });
+	// plan-08 §1: legacy ensureWikiSkeleton(wikiStoreGlobal) call removed;
+	// structural seed for new wiki.db lives in wiki/wiki-database.ts bootstrapFixedRoots.
 
 	agentService.subscribe((event: any) => {
 		// Forward all agent events to WebSocket clients
@@ -474,7 +454,6 @@ export async function startServer(options?: StartServerOptions) {
 		agentService,
 		agentStore,
 		projectStore,
-		wikiStore,
 		requirementStore,
 		templateStore,
 	});
@@ -563,7 +542,6 @@ export async function startServer(options?: StartServerOptions) {
 		templateStore,
 		sessionDB,
 		projectStore,
-		wikiStore: wikiStoreGlobal,
 		projectJobStore,
 	});
 	management.setEnrichmentRunner((projectId, opts) => enrichmentRunner.runProjectEnrichment(projectId, opts));
@@ -587,7 +565,6 @@ export async function startServer(options?: StartServerOptions) {
 		agentStore,
 		requirementStore,
 		taskStepStore,
-		wikiStore,
 		projectStore,
 		templateStore,
 		orchestratePlanStore,
@@ -648,7 +625,6 @@ export async function startServer(options?: StartServerOptions) {
 		sessionDB,
 		cronStore,
 		cronRunStore,
-		wikiStore: wikiStoreGlobal,
 		archivistGit,
 		projectWorkStore,
 	});
@@ -667,7 +643,6 @@ export async function startServer(options?: StartServerOptions) {
 		projectStore,
 		projectWorkStore,
 		sessionDB,
-		wikiStore: wikiStoreGlobal,
 	});
 	management.setProjectWorkRunner(projectWorkRunner);
 	management.setAgentService(agentService);
@@ -695,7 +670,6 @@ export async function startServer(options?: StartServerOptions) {
 		projectStore,
 		requirementStore,
 		requirementDocStore,
-		wikiNodeStore: wikiStoreGlobal,
 		manifestStore: orchestrateManifestStore,
 		archivistService,
 		sessionDB,
@@ -706,13 +680,9 @@ export async function startServer(options?: StartServerOptions) {
 	// project wiki (Wiki expand/docRead), from a cron-triggered sendPrompt
 	// loop. The legacy CreateRequirementWithDoc tool was retired in F3 (file
 	// deleted F5); Flow is the single requirement-flow entry point.
-	agentService.setPmService(pmService, requirementStore, wikiStore);
-	// v0.8 (M5): surface the global WikiStore onto every session so extractor
-	// A can write global memory nodes (decision 46 N2) and recall
-	// (memory-hooks) can read them back. Extractor enable flags are read from
-	// this.config.extractors inside AgentService (loaded via loadConfig in its
-	// constructor). (steps-overhaul sub-10: checkpointThresholds dropped.)
-	agentService.setWikiStoreGlobal(wikiStoreGlobal);
+	agentService.setPmService(pmService, requirementStore);
+	// plan-08 §1: agentService.setWikiStoreGlobal removed — wiki v2 tool reads
+	// getWikiService() singleton (wired by setWikiRuntime below).
 
 	// v0.8 (P3 §7.7 #4): tool-call usage log — one row per tool invocation,
 	// surfaced onto every session so tool-factory can record it. Best-effort.
@@ -728,8 +698,6 @@ export async function startServer(options?: StartServerOptions) {
 	registerServerInstances({
 		agentService,
 		sessionDB,
-		wikiStoreGlobal,
-		projectWikiStore: wikiStore,
 		requirementStore,
 		managementService: management,
 		pmService,
@@ -807,7 +775,7 @@ export async function startServer(options?: StartServerOptions) {
 	// crons on project delete) and ManagementService (container view + create
 	// side-effects + resource usage).
 	const projectRouter = createProjectRouter({
-		projectStore, requirementStore, wikiStore, taskStepStore,
+		projectStore, requirementStore, taskStepStore,
 		cronStore, management,
 	});
 	app.use("/api/projects", projectRouter);
@@ -942,7 +910,7 @@ export async function startServer(options?: StartServerOptions) {
 	});
 	app.use("/api/pm", pmRouter);
 
-	app.use("/api/project-wiki", createWikiRouter({ wikiStore }));
+	// plan-08 §1: legacy /api/project-wiki router mount removed (project-wiki-router.ts deleted).
 
 	// v0.8 (P8 §10.9) → wiki-system-redesign plan-06 §1: 9 个结构化 POST endpoint
 	// under /api/wiki(expand/read/search/create/update/delete/link/unlink/move)。
@@ -973,6 +941,15 @@ export async function startServer(options?: StartServerOptions) {
 		agentService,
 		agentStore,
 		git: archivistGit,
+	}));
+
+	// wiki-system-redesign plan-08 §3 + §5:备份/恢复 + DB 维护管理路由。
+	// 暴露在 /api/wiki-maintain(独立 path,不走 Agent shell;authority 同
+	// /api/wiki-admin 由 server host 注入)。wikiDb 句柄可选(headless/无
+	// wiki subsystem 时 backup/integrity 路由会返 400 而非崩溃)。
+	app.use("/api/wiki-maintain", createWikiMaintenanceRouter({
+		coreDb: sessionDB,
+		wikiDb: wikiDbHandle,
 	}));
 
 	// v0.8 (M2): archivist endpoints — scan / rescan / divergence / git ops.
@@ -1035,12 +1012,8 @@ export async function startServer(options?: StartServerOptions) {
 	// v0.8 (M2): read the global wiki tree from a session view root. Project-
 	// role sessions pass their wikiRootNodeId; global sessions pass
 	// "wiki-root:global". This is the view-truncated read (decision 38).
-	archivistRouter.get("/view/:wikiRootNodeId", (req, res) => {
-		try {
-			const nodes = wikiStoreGlobal.listVisibleFromRoot(req.params.wikiRootNodeId);
-			res.json(nodes);
-		} catch (err) { res.status(500).json({ error: (err as Error).message }); }
-	});
+	// plan-08 §1: legacy wikiStoreGlobal.listVisibleFromRoot view removed;
+	// UI reads the wiki tree via /api/wiki (expand action) on the new wiki.db.
 	app.use("/api/archivist", archivistRouter);
 
 	// v0.8 模板统一:role-template 通道已移除 —— role 身份模板并入 TemplateStore

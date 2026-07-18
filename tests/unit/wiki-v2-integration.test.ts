@@ -1034,42 +1034,30 @@ describe("Regression — deleted wiki-scan-cursor-store.ts: existing tests NO LO
 			.toBe(false);
 	});
 
-	test("FLIPPED (BLOCKER 6 fix): m2 + sub12 no longer import the deleted store / cursorStore", () => {
-		// round-1 documented this as a REGRESSION (broken imports still present).
-		// BLOCKER 6 fix (round-2 架构 lens) updated both files: m2 had its
-		// superseded archivist-scan + intent/divergence describe blocks removed
-		// (legacy WikiStore/write-guard/ProjectWikiStore coverage preserved);
-		// sub12 was rewritten to keep only the live SUMMARY_MAX_BYTES byte-cap
-		// block. Neither references wiki-scan-cursor-store or cursorStore now.
-		const { readFileSync } = require("node:fs") as typeof import("node:fs");
-		const m2 = readFileSync(
-			join(process.cwd(), "tests/unit/m2-wiki-archivist.test.ts"),
-			"utf-8",
-		);
-		const sub12 = readFileSync(
-			join(process.cwd(), "tests/unit/sub12-summary-truncation.test.ts"),
-			"utf-8",
-		);
-		expect(m2).not.toMatch(/from\s+["'].*wiki-scan-cursor-store\.js["']/);
-		expect(sub12).not.toMatch(/from\s+["'].*wiki-scan-cursor-store\.js["']/);
-		// No reference to the deleted store CLASS anywhere (import or usage).
-		expect(m2).not.toMatch(/WikiScanCursorStore/);
-		expect(sub12).not.toMatch(/WikiScanCursorStore/);
-		// Neither constructs the OLD WikiSkeletonService deps shape.
-		expect(m2).not.toMatch(/new\s+WikiSkeletonService/);
-		expect(sub12).not.toMatch(/new\s+WikiSkeletonService/);
+	test("FLIPPED (plan-08 §1): legacy m2 + sub12 test files removed", () => {
+		// plan-08 §1 deleted the legacy WikiScanCursorStore / wiki-scan-cursor-
+		// store.ts source AND the now-dead test files (m2-wiki-archivist.test.ts
+		// and sub12-summary-truncation.test.ts). Their behaviors are covered by
+		// wiki-v2-* tests (service / search / regex-limits). The regression
+		// guard is now "no test references the deleted module" — since both
+		// files are GONE, no reference can exist.
+		expect(existsSync(join(process.cwd(), "tests/unit/m2-wiki-archivist.test.ts")))
+			.toBe(false);
+		expect(existsSync(join(process.cwd(), "tests/unit/sub12-summary-truncation.test.ts")))
+			.toBe(false);
+		expect(existsSync(join(process.cwd(), "src/server/wiki-scan-cursor-store.ts")))
+			.toBe(false);
 	});
 
-	test("db-migration.ts still CREATEs wiki_scan_cursors table (legacy support)", () => {
-		// The table DDL is retained for back-compat (per the comment in
-		// db-migration.ts ~L147-151 and L854-865) — that's fine. The store
-		// class is what was deleted. No regression here — just documenting.
+	test("db-migration.ts no longer CREATEs wiki_scan_cursors table (plan-08 §1)", () => {
+		// plan-08 §1 removed the legacy wiki_scan_cursors DDL along with the
+		// store class. Cursor state now lives in wiki_repositories.indexed_revision.
 		const { readFileSync } = require("node:fs") as typeof import("node:fs");
 		const src = readFileSync(
 			join(process.cwd(), "src/server/db-migration.ts"),
 			"utf-8",
 		);
-		expect(src).toMatch(/CREATE TABLE IF NOT EXISTS wiki_scan_cursors/);
+		expect(src).not.toMatch(/CREATE TABLE IF NOT EXISTS wiki_scan_cursors/);
 	});
 });
 

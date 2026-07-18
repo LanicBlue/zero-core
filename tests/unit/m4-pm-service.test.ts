@@ -42,7 +42,11 @@ import {
 } from "../../src/server/requirement-doc-store.js";
 import { PmService } from "../../src/server/pm-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
-import { WikiStore } from "../../src/server/wiki-node-store.js";
+// round-2 E4: WikiStore import + `wikiNodeStore` dep wiring removed.
+// plan-08 §1 deleted wiki-node-store; PmServiceDeps no longer carries a
+// wikiNodeStore field (pm-service.ts readProjectWikiSummary now no-ops on
+// an empty node list). All non-wiki PM-管线 / requirement-doc / coverage-
+// verdict coverage preserved.
 // v0.8 P0 (§1.4 过渡期): roleTag 不再走 store round-trip;PM agent 物理列直接 seed。
 import { seedAgentWithRoleTag } from "./helpers/p0-test-helpers.js";
 
@@ -53,7 +57,6 @@ let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let requirementStore: RequirementStore;
 let manifestStore: OrchestrateManifestStore;
-let wikiStore: WikiStore;
 let docStore: RequirementDocStore;
 
 let PROJECT_ID = "proj-test";
@@ -70,7 +73,6 @@ beforeEach(() => {
 	agentStore = new AgentStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);
 	manifestStore = new OrchestrateManifestStore(sessionDB);
-	wikiStore = new WikiStore(sessionDB);
 
 	// ProjectStore.create auto-mints the id; capture it for downstream use.
 	const project = projectStore.create({ name: "Test", workspaceDir } as any);
@@ -111,7 +113,6 @@ function buildPm(overrides?: {
 		projectStore,
 		requirementStore,
 		requirementDocStore: docStore,
-		wikiNodeStore: wikiStore,
 		manifestStore,
 		archivistService: overrides?.archivistService,
 		sessionDB,

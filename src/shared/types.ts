@@ -113,24 +113,13 @@ export interface AgentRecord {
 	 */
 	subagents?: Array<{ agentId: string; name?: string; description?: string }>;
 	/**
-	 * v0.8 (P0 §2.2 / §11.9): wiki nodes this agent anchors into its context.
-	 * `inject` controls how the node enters the prompt — `system` (always in
-	 * system prompt), `context` (in the turn context bundle), or `off` (stored
-	 * but not injected).
-	 * JSON-stored as a single TEXT column.
-	 */
-	wikiAnchors?: Array<{
-		nodeId: string;
-		inject: "system" | "context" | "off";
-	}>;
-	/**
 	 * wiki-system-redesign plan-05 §1: Agent 配置 schema 迁移到新 Wiki 模型。
 	 * `wikiGrants` 是显式授权模板(在 session build 时由 AgentService 编译为
 	 * `CompiledWikiAccess`,放入 SessionConfig 与 CallerCtx.wikiAccess)。
 	 *
 	 * 关键不变量(plan-05 §「明确不做」/ acceptance-05 §H):
-	 *   - **不自动从 wikiAnchors 转换**:旧 wikiAnchors 字段保留到 plan-08 删除;
-	 *     runtime 从本阶段起忽略它。旧数据不迁移、不双写。
+	 *   - plan-08 §1 cutover:旧 wikiAnchors 字段已物理删除;runtime/
+	 *     CallerCtx/AgentEditor form 均不再含此字段。
 	 *   - **不隐式授予全树**:zero / memory turn 的全树权限必须经 template 显式
 	 *     `wiki-root` grant,不得靠 `agentId === "zero"` 硬编码。
 	 *   - **不参与 prompt 注入决策**:grant 只决定工具权限;prompt 内容由
@@ -159,7 +148,7 @@ export interface AgentRecord {
 	/**
 	 * v0.8 (P0 §1.4 / §2.2): roleTag was REMOVED from the type. Identity in
 	 * v0.8 = name + systemPrompt (RFC §1.4); UI grouping / preset entry now
-	 * flows through subagents + wikiAnchors + toolPolicy, not a string tag.
+	 * flows through subagents + wikiGrants + toolPolicy, not a string tag.
 	 *
 	 * The physical `role_tag` column is KEPT on the agents table (legacy —
 	 * dropping it would risk data loss / rollback pain, see plan-P0.md §1.4

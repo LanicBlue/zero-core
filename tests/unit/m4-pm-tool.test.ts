@@ -45,7 +45,10 @@ import {
 } from "../../src/server/requirement-doc-store.js";
 import { PmService } from "../../src/server/pm-service.js";
 import { runMigrations } from "../../src/server/db-migration.js";
-import { WikiStore } from "../../src/server/wiki-node-store.js";
+// round-2 E4: WikiStore import + `wikiNodeStore` dep wiring removed.
+// plan-08 §1 deleted wiki-node-store; PmServiceDeps no longer carries a
+// wikiNodeStore field. All non-wiki PM-session Flow.create / primitive
+// surface coverage preserved.
 import { flowTool } from "../../src/tools/flow-tool.js";
 import { getToolExecute, getToolFormat } from "../../src/tools/tool-factory.js";
 import { createFlowActions } from "../../src/server/flow-actions.js";
@@ -65,7 +68,6 @@ let projectStore: ProjectStore;
 let agentStore: AgentStore;
 let requirementStore: RequirementStore;
 let manifestStore: OrchestrateManifestStore;
-let wikiStore: WikiStore;
 let docStore: RequirementDocStore;
 
 let PROJECT_ID = "proj-test";
@@ -82,7 +84,6 @@ beforeEach(() => {
 	agentStore = new AgentStore(sessionDB);
 	requirementStore = new RequirementStore(sessionDB);
 	manifestStore = new OrchestrateManifestStore(sessionDB);
-	wikiStore = new WikiStore(sessionDB);
 
 	const project = projectStore.create({ name: "Test", workspaceDir } as any);
 	PROJECT_ID = project.id;
@@ -113,7 +114,6 @@ function buildPm(): PmService {
 		projectStore,
 		requirementStore,
 		requirementDocStore: docStore,
-		wikiNodeStore: wikiStore,
 		manifestStore,
 		sessionDB,
 	});

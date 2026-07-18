@@ -42,7 +42,7 @@ import type { AgentStore } from "./agent-store.js";
 import type { TemplateStore } from "./template-store.js";
 import type { CoreDatabase } from "./core-database.js";
 import type { ProjectStore } from "./project-store.js";
-import type { WikiStore } from "./wiki-node-store.js";
+
 import type { ProjectJobStore } from "./project-job-store.js";
 import type { AgentVia } from "../shared/types.js";
 import { resolveSessionByRoleProject, type WikiRootResolver } from "./session-context-router.js";
@@ -56,7 +56,7 @@ export interface EnrichmentRunnerDeps {
 	templateStore: TemplateStore;
 	sessionDB: CoreDatabase;
 	projectStore: ProjectStore;
-	wikiStore: WikiStore;
+	
 	projectJobStore: ProjectJobStore;
 	resolveWikiRoot?: WikiRootResolver;
 }
@@ -101,7 +101,7 @@ export class EnrichmentRunner {
 		projectId: string,
 		opts: { via: AgentVia; prompt?: string; operationId?: WikiOperationId },
 	): Promise<{ jobId: string; sessionId: string }> {
-		const { agentService, sessionDB, projectStore, wikiStore, projectJobStore } = this.deps;
+		const { agentService, sessionDB, projectStore, projectJobStore } = this.deps;
 
 		const project = projectStore.get(projectId);
 		if (!project) throw new Error(`Project not found: ${projectId}`);
@@ -139,7 +139,7 @@ export class EnrichmentRunner {
 					projectId: project.id,
 					projectPath: project.workspaceDir,
 					projectName: project.name,
-					wikiStore,
+					
 				}, "work"),
 			)
 			.then(() => {

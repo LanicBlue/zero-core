@@ -115,11 +115,11 @@ ToolExecutionContext {
 | **Project** | management | ✅ 写 | ❌ | ❌ | `ctx.management`(zero-only) | **v0.8 P3**：action-switched 项目管理(create/list/get/update/delete) |
 | **AgentRegistry** | management | ✅ 写 | ❌ | ❌ | `ctx.management`(zero-only) | **v0.8 P3**：全局 Agent 注册表 CRUD(create/update/delete/get/list/listTemplates/getTemplate) |
 | **Cron** | management | ✅ 写 | ❌ | ❌ | `ctx.management`(zero-only) | **v0.8 P3**：cron 作业 CRUD + 状态控制 |
-| **Wiki** | management | ✅ 写 | ❌ | 视 action 而定 | `ctx.wikiStore`(每 project-role session) | **v0.8 P3**：action-switched(expand/read/upsert/search/maintain) Wiki tree 操作；记忆子树也走这里 |
+| **Wiki** | management | ✅ 写 | ❌ | 视 action 而定 | `ctx.wikiV2`(per-session CallerCtx) | **v0.8 P3 + plan-04 重设计**：action-switched Wiki tree 操作(9 个：expand/read/search/create/update/delete/link/unlink/move),数据存储在**独立 wiki.db**(非 core.db);scope 由 Agent Editor 配置的 `wikiGrants`/`wikiContext` 在 CallerCtx 中编译决定,不再由 anchors 决定。管理面(addresses/repositories/grants/context)在 `/api/wiki-admin` 单独路由,不经此工具 |
 | **Platform** | management | ❌ | ❌ | ✅ | — | 平台自省(info/logs/config/providers)，读 SQLite 不读 config.json（原 `Assistant`，v0.8 改名）|
 
 > 说明：
-> - **`MemoryRecall` / `MemoryNote`** 已从 `ALL_TOOLS` 移除(v0.8 P2 §11.6);记忆统一为 per-agent Wiki 子树,通过 `Wiki` 工具进入。`runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `server/memory-store.ts`(MemoryStore) 本批清理僵尸已删;`MemoryNodeStore` 保留(wiki 不可用时压缩流程回退)。
+> - **`MemoryRecall` / `MemoryNote`** 已从 `ALL_TOOLS` 移除(v0.8 P2 §11.6);记忆统一为 per-agent Wiki subtree(`memory://` 逻辑地址解析到 `wiki-root/memory/<agentId>/...`),通过 `Wiki` 工具进入。`runtime/mcp-tools/memory-tools.ts`(memoryReadTool/memoryWriteTool)+ `server/memory-store.ts`(MemoryStore) 本批清理僵尸已删。`wikiAnchors`/`wikiAnchorNodeIds`/旧 `ProjectWikiStore`/旧 `/api/project-wiki`/旧 `header:/intent:/structure:` provenance 已在 plan-08 §1 cutover 中**物理删除**——记忆/Project/knowledge 三 namespace 都走新 wiki.db + Wiki v2 tool。
 > - **`Assistant`** 已重命名为 **`Platform`**（语义更准——只做平台自省，不做通用助手）。`RENAMED_TOOLS["Assistant"] = "Platform"` 把旧 toolPolicy 的键运行时迁移过来。
 > - **8 个旧 zero-admin 工具**(CreateAgent / UpdateAgent / DeleteAgent / InstantiatePreset / ListPresets / SetToolPolicy / SetToolEnabled / CreateProject…)已合并为 4 个 action 工具(`AgentRegistry` / `Project` / `Cron` / `Wiki`)。Capability 在工具里，zero agent 只是 toolPolicy 组合。
 > - **CONDITIONAL 门控** = `CONDITIONAL_TOOLS[name](ctx)` 必须返回 true 才会出现在 `buildToolsSet` 的输出里(见 §6)。这是"按角色自动收口工具集"的核心机制：PM session 才有 `pmService`，zero session 才有 `management`，普通 role session 自动看不到这些管理工具。
@@ -191,7 +191,7 @@ transport === 'sse' | 'streamable-http':
 - **category**: `management`，**CONDITIONAL**: `ctx.management` 必须存在(仅 zero session 注入 `ManagementService`)。
 - **action-switched(7 个 action)**：`create` / `update` / `delete` / `get` / `list` / `listTemplates` / `getTemplate`。
 - **`template` 入参**：`create` 可带 `template`(id 或 case-insensitive name)，从 role preset 拷身份(systemPrompt + toolPolicy)——替代旧 `InstantiatePreset`。可选 `name`/`model`/`provider` 覆盖。
-- **`update` 的 toolPolicy 合并语义**：**MERGE 而非 replace**(toggle 一个工具不会清掉其他)。例如 `{toolPolicy:{tools:{WebSearch:{enabled:false}}}}` 只禁 WebSearch。`subagents` / `wikiAnchors` 是 replace-wholesale。
+- **`update` 的 toolPolicy 合并语义**：**MERGE 而非 replace**(toggle 一个工具不会清掉其他)。例如 `{toolPolicy:{tools:{WebSearch:{enabled:false}}}}` 只禁 WebSearch。`subagents` / `wikiGrants` / `wikiContext` 是 replace-wholesale(plan-07 后:Wiki 权限由 `wikiGrants`/`wikiContext` 决定,旧 `wikiAnchors` 字段已删)。
 - **`list` / `create` / `update` 返回紧凑 summary**(id/name/model/provider/workspaceDir/thinkingLevel)；要看完整 systemPrompt 用 `get`。这是防 context 泛滥的关键设计。
 - **`zero` 保护**：delete 时 zero 管理 Agent 受保护，拒绝删除。
 - **错误统一**：任何失败(not found / 缺必填字段)返回 `"Error: …"` 字符串，不抛异常(让 LLM 能自然读错误信息)。
@@ -307,6 +307,7 @@ sequenceDiagram
 | 维度 | 现状 | 评估 |
 |------|------|------|
 | 文件路径 | `file-read` / `file-write` / `file-edit` 的 `resolvePath()` 检查 workspaceDir 前缀 | ⚠️ 默认 `restrictToWorkspace = false`，需要按 agent 显式开启 |
+| Wiki DB / 备份 / 运行时目录保护(plan-08 §2) | `core/protected-paths.ts` + `tools/wiki-path-guard.ts` 重写,集中列出 `${ZERO_CORE_DIR}/db/{core,wiki}.db{,-wal,-shm}` + `backups/{core,wiki}` + `wiki/.runtime` + `wiki/` 正文根;`canonicalize` 处理相对路径/引号/env var/大小写/symlink/junction/shell 拼接;Read/Write/Edit/Grep/Glob/Shell 统一断言,唯一例外是管理备份服务(不在 Agent shell 内) | ✅ Agent 无法绕过 Wiki tool 直读/直写数据库,也无法复制活跃 WAL 当备份 |
 | 敏感文件读取 | **历史**有过 `BLOCKED_FILES` 列表(.env / credentials.json / secret)挂在 Assistant 工具里；**v0.8 Platform 改名重构后该列表已删除**(原 `assistant-tools.ts` 已不存在)。`Platform` 工具自己用 `redactSensitive()` 在输出 providers / config 时屏蔽 apiKey/secret/password/token 字段 | ⚠️ 仅 Platform 输出层 redact；其他工具(Read/Grep)读敏感文件无统一拦截 |
 | Shell 黑名单 | `bash.ts:89` `CMD_TRANSLATIONS` 和 `bash.ts:102` `UNIX_ONLY_COMMANDS` 提示 | ❌ 不构成黑名单，只是翻译/警告 |
 | 工具白名单 | `runtime/tools/index.ts` 的 `buildToolsSet`(单一过滤)—— 构建工具集时按 `policy.blockedTools` 过滤,LLM 根本看不到被阻工具;无运行时再检查。`core/tool-policy.ts` 的 `evaluateToolCall` / `requiresApproval` 是死代码(零调用,本批已删) | ✅ 单一过滤真值源,无 drift 风险 |
@@ -368,7 +369,7 @@ thoughtHistories: Map<agentId, [{thought, thoughtNumber, totalThoughts, status}]
 
 - 25 个工具按 category 已经分了 9 类，但文档/UI 仍倾向平铺。可考虑把"workflow + management"(15 个 v0.8 新工具)单独分到"工作流域"和"管理域"两栏，与基础工具(runtime/task/web/interaction/thinking)视觉隔离。
 - 同名陷阱：`Agent`(委派) vs `AgentRegistry`(注册表) 对 LLM 仍然容易混淆，工具描述里靠一句话提醒。长期看 `AgentRegistry` 改名为 `RoleRegistry` / `ManageAgents` 可能更直观，但要权衡 RENAMED_TOOLS 的迁移成本。
-- **Platform 工具的 redactSensitive 是输出层补丁**——只在 Platform 自己返回时屏蔽敏感字段。Read/Grep 读 `.env`/`secret.json` 时无统一拦截(§9)。建议下沉到 `resolvePath()` 层。
+- **Platform 工具的 redactSensitive 是输出层补丁**——只在 Platform 自己返回时屏蔽敏感字段。Read/Grep 读 `.env`/`secret.json` 时无统一拦截(§9)。建议下沉到 `resolvePath()` 层。Wiki DB/backup/runtime 目录的保护已下沉到 `core/protected-paths.ts` 集中表 + `tools/wiki-path-guard.ts` 重写(plan-08 §2),此模式可扩展用于通用敏感文件拦截。
 - ~~`evaluateToolCall`(tool-policy.ts) 与 `buildToolsSet`(tools/index.ts) 两处独立读 blockedTools,存在 drift 风险~~ —— **已解决(本批清理)**:`evaluateToolCall` / `requiresApproval` 是死代码(导出但零调用),本批已删;实际工具过滤只剩 `buildToolsSet`(构建工具集时按 `blockedTools` 过滤)单一真值源,LLM 看不到被阻工具,无运行时再检查,drift 隐患消除。
 
 ## 13. 一图总览

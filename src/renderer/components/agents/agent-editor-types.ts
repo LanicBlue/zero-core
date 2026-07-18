@@ -62,11 +62,6 @@ export function agentToForm(a: AgentRecord): FormState {
 		// agent config page. Copy through so the subagents editor round-trips
 		// with the server record.
 		subagents: a.subagents,
-		// plan-07 §3 兑现 sub-06 defer:旧 wikiAnchors 字段**清空**(runtime
-		// 不再读,form 也不再 round-trip)。save 时显式传 [] —— 这样 ipc-proxy
-		// JSON.stringify([]) 存活 → AgentStore.update 把字段写为 [],旧值
-		// 不残留(feedback-unique-message-keys 同款陷阱)。
-		wikiAnchors: [],
 		// wiki-system-redesign plan-05 §1 + plan-07 §3/§4:Wiki grants/context
 		// 现在由 WikiAccessSection / WikiContextSection 编辑。round-trip 保留。
 		wikiGrants: a.wikiGrants,

@@ -1,27 +1,49 @@
 # 05 · 持久化层
 
+> **⚠ plan-08 cutover 后此文档部分过时** —— Wiki 数据存储已从"core.db 里的
+> `project_wiki` 表 + 磁盘镜像树 `wiki/<area>/<safe-name>.md`"重设计为**独立的
+> `db/wiki.db`**(7 张新表:`wiki_nodes` / `wiki_links` / `wiki_addresses` /
+> `wiki_repositories` / `wiki_source_bindings` / `wiki_nodes_fts` /
+> `wiki_audit_log`);正文不再是磁盘 markdown,直接存 `wiki_nodes.content`(BLOB)。
+> 旧 `project_wiki` / `wiki_anchors` / `WikiStore` / `ProjectWikiStore` /
+> `wiki-node-store.ts` / `wiki-anchor-injection.ts` / `wiki-scan-cursor-store.ts`
+> / `MemoryNodeStore` 等模块**已物理删除**(plan-08 §1);旧 `project_wiki` 表保留为
+> 未读取的历史表(不迁移)。下文凡是描述旧模型的部分都需对照
+> [06-knowledge-subsystems.md](06-knowledge-subsystems.md) §Wiki-v2 与
+> [plan-01-database-contracts.md](../plan/wiki-system-redesign/plan-01-database-contracts.md)
+> 阅读新实现。
+>
 > Zero-Core 是"本地优先"系统。用户数据主要落在 `~/.zero-core/` 下的几个文件里:**主库
-> `db/core.db`**(`CoreDatabase` 持有,better-sqlite3 单连接) + **Wiki 磁盘镜像树** `wiki/`
-> (v0.8,正文 markdown,见 06 §2.5) + 一组旧版 JSON 文件(迁移后改 `.migrated.bak`)。本文
-> 剖析 db/core.db 这张表图谱,并标注哪些表"不在主库 / 不进 db-migration"。
+> `db/core.db`**(`CoreDatabase` 持有,better-sqlite3 单连接) + **独立 Wiki 库
+> `db/wiki.db`**(plan-01 起,WikiDatabase 持有,7 张表,见 06 §Wiki-v2) + **备份
+> `backups/{core,wiki}/`**(plan-08 §3,管理 API 触发,SQLite Backup API) + 一组旧版
+> JSON 文件(迁移后改 `.migrated.bak`)。本文剖析 db/core.db 这张表图谱,并标注哪些表
+> "不在主库 / 不进 db-migration"。
 >
 > v0.8 后续清理:旧的向量库 `knowledge.db`(`kb_chunks`)、`kb_entries`、以及 Gen1
 > `MemoryNodeStore` 的 4 张表(`memory_nodes`/`memory_subjects`/`memory_edges`/
-> `memory_nodes_fts`)已整体 DROP(见 §2.2 末)。知识与记忆统一以 `project_wiki` wiki 树
-> 承载(06 §2)。`knowledge.db` 不再产生。
+> `memory_nodes_fts`)已整体 DROP(见 §2.2 末)。知识与记忆统一以新 wiki.db 的
+> `wiki-root/{knowledge,memory,projects}` 三个固定根承载(06 §Wiki-v2)。
+> `knowledge.db` 不再产生。
 
 ## 1. 数据驻留位置
 
 ```
 ~/.zero-core/
 ├── db/core.db            ← 主数据库 (CoreDatabase,better-sqlite3,§2 全部表 ≈25 张 = 批 A db-migration 管理 23 张 [5 会话核心 + 4 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 2 张 [kv_store + extraction_cursors + tool_telemetry 中 db-migration 未管的];v0.8 已 DROP memory_entities/memory_relations + memory_nodes/_subjects/_edges/_fts + kb_entries/kb_chunks;§2 顶部"表计数的口径"块有详细切分)
+├── db/wiki.db            ← plan-01 起独立 Wiki 数据库 (WikiDatabase, 7 张表 + wiki_schema_version;独立 WAL/checkpoint/backup 生命周期,见 06 §Wiki-v2 / [plan-01-database-contracts.md](../plan/wiki-system-redesign/plan-01-database-contracts.md))
 ├── webfetch/
 │   ├── cache/<hash>.json  ← URL 抓取缓存
 │   ├── results/<id>.json ← 大结果/binary 持久化
 │   └── cookies.json       ← WebFetch Cookie jar
-├── wiki/                  ← v0.8 (P1 §10.1) Wiki 磁盘镜像树根(见 06 §2.5)
-│   ├── <area>/<safe-name>.md  ← project_wiki 行的正文(doc_pointer 指向这里)
-│   └── ...
+├── wiki/                  ← Wiki 磁盘正文 + Project git mirror + memory area
+│   ├── knowledge/         ← knowledge subtree (per-node files)
+│   ├── memory/<agentId>/  ← per-agent memory subtree
+│   ├── projects/<projectId>/ ← Project mirror(root node + indexed files)
+│   └── .runtime/          ← indexer / backup 私有 scratch(Agent 不可读,plan-08 §2)
+├── backups/
+│   ├── core/core-<ISO>.db (+ .json manifest)  ← plan-08 §3 SQLite Backup API snapshot
+│   └── wiki/wiki-<ISO>.db (+ .json manifest)  ← 独立 wiki.db snapshot(成对但分别 verify)
 ├── logs/<YYYY-MM-DD>.log  ← 按天日志
 ├── workspace/             ← 默认 workspace 目录
 ├── messages/<persona>.json  ← 旧版消息文件（迁移后改 .migrated.bak）
@@ -41,10 +63,32 @@
 └── tool-config.json
 ```
 
-**v0.8 关键变化**:`wiki/` 目录是 v0.8 (P1 §10.1) 新增的 **Wiki 体磁盘镜像树** —— `project_wiki`
-表只存元数据(node_id / parent / path / summary / doc_pointer),正文下沉到磁盘 markdown 文件,
-由 `diskPathFor(node)` 推导路径(见 06 §2.5)。这是为了让 wiki 正文可被 git/archivist 直接读、
-且避免大段 markdown 把 SQLite 表撑爆。`WIKI_DISK_ROOT` 全局隔离陷阱见 06 §2.5 / v0.8 工具加固决策。
+**plan-01 + plan-08 cutover 关键变化**:
+
+- Wiki 数据存储从 `db/core.db.project_wiki` 表 + 磁盘镜像 markdown 树(`wiki/<area>/<safe-name>.md`)
+  重设计为**独立的 `db/wiki.db`**,7 张新表(`wiki_nodes` / `wiki_links` / `wiki_addresses` /
+  `wiki_repositories` / `wiki_source_bindings` / `wiki_nodes_fts` / `wiki_audit_log`)。
+  正文**直接存 `wiki_nodes.content` TEXT 列**(不再下沉磁盘),FTS5 external-content 索引。
+  独立 WAL / checkpoint / backup 生命周期,与 core.db 解耦。
+- `wiki/` 目录现在承载:Project git mirror(物理 git repo,由 `wiki_repositories.source_root`
+  引用)、`.runtime/` indexer 私有 scratch。**正文不再下沉磁盘**(见上条:`wiki_nodes.content`
+  TEXT 列);`wiki/` 目录不写 per-node 正文文件,`WIKI_DISK_ROOT` 仅作为 `core/protected-paths.ts`
+  guard 的 canonical 路径根存在。正文与 metadata 双写(`wiki_nodes` ↔ `wiki_nodes_fts`)
+  由 `WikiNodeRepository` 在显式 transaction 内同步(external-content FTS 无 trigger)。
+- 旧 `project_wiki` 表保留为未读取的历史表;旧 `wiki_anchors` / `wikiAnchorNodeIds` /
+  `header:/intent:/structure:` provenance / `ProjectWikiStore` / `wiki-anchor-injection.ts` /
+  `wiki-scan-cursor-store.ts` / `MemoryNodeStore` 全部**物理删除**(plan-08 §1)。
+- Wiki DB 的 scope 不再由 anchors 决定,改由 Agent Editor 配置的 `wikiGrants` + `wikiContext`
+  在 CallerCtx 中编译(plan-05 / plan-07)。
+- 备份/恢复:`backups/{core,wiki}/<kind>-<ISO>.db`(SQLite Backup API 在线 snapshot,不复制活跃
+  DB 文件;manifest sidecar JSON 记 source/sha256/schema_version/business_revision)。管理
+  endpoint `/api/wiki-maintain/{backup/all,backup/core,backup/wiki,backup/list,backup/verify,
+  backup/restore,backup/rotate,integrity,foreign-keys,fts/rebuild,optimize,legacy/cleanup}`(plan-08)。
+- FS guard:`core/protected-paths.ts` 集中列出 db/wiki.db + WAL/SHM + backups + wiki/.runtime,
+  Read/Write/Edit/Grep/Glob/Shell 统一断言;唯一例外是管理备份服务(不通过 Agent shell)。
+
+`WIKI_DISK_ROOT` 仍存在,作为 wiki/ 目录的 canonical 路径根(Agent 经 Wiki tool 操作,
+不直接 Read/Write 这里的文件)。
 
 证据：`src/core/config.ts:233` `ZERO_CORE_DIR = process.env.ZERO_CORE_DIR ?? join(homedir(), ".zero-core")`；迁移路径见 `src/server/db-migration.ts:130-218`(旧 JSON 迁移) + `:653-897`(v0.8 工作流域表 DDL)。
 
@@ -248,8 +292,8 @@ JSON 前身)。Store 类多数用 `SqliteStore<T>` 反射 CRUD(见 §3),**两个
 | 表 | Store 类 | 列数 | v0.8 阶段 | 备注 |
 |----|----------|------|-----------|------|
 | `projects` | `ProjectStore` (project-store.ts:78) | 5 (+legacy 残留) | M0 | 极简元数据:name + workspaceDir(UNIQUE)。M0 之前的列(path / analyst_cron_id / status 等)在升级 DB 上残留但不再读 |
-| `project_wiki` | `WikiStore` (wiki-node-store.ts:327) | 15 | M2 / P1 §10.1 | Wiki 磁盘镜像树(见 06 §2.5)。M2 删除 legacy `detail`+`type` 列(内容下沉 ~/.zero-core/wiki/),改用 `doc_pointer` + 磁盘正文。三个索引:`idx_wiki_project` / `idx_wiki_parent` / `idx_wiki_parent_path`(archivist upsert 热路径) |
-| `wiki_scan_cursors` | `WikiScanCursorStore` (wiki-scan-cursor-store.ts:62) | 7 | M2 | (archivist_id, project_id) 唯一 → 增量 git cursor。见 06 §2.6 |
+| ~~`project_wiki`~~ | ~~`WikiStore` (wiki-node-store.ts)~~ | ~~15~~ | ⚠️ **plan-08 §1 cutover 已退役**:表保留为未读取历史表,**所有读写代码已删**(`WikiStore`/`ProjectWikiStore`/`wiki-node-store.ts`/`wiki-anchor-injection.ts` 全部物理删除)。db-migration 不再 CREATE/ALTER/MIGRATE 此表;fresh core.db 不再建此表。新 Wiki 数据落 `db/wiki.db`(见顶部 banner + 06 §Wiki-v2)。explicit `/api/wiki-maintain/legacy/cleanup` 可手动 DROP。 |
+| ~~`wiki_scan_cursors`~~ | ~~`WikiScanCursorStore`~~ | ~~7~~ | ⚠️ **plan-08 §1 cutover 已退役**:游标已合并进 `wiki.db.wiki_repositories.indexed_revision` + `wiki_source_bindings.indexed_revision`(plan-03 git mirror)。表与 store 都已物理删除。 |
 | `requirements` | `RequirementStore` (requirement-store.ts:85) | 14 | M1 | 需求实体:status 状态机 / source(analyst/user)/ priority / 影响域。两索引(project / status) |
 | `requirement_status_history` | RequirementStore 内部 historyStore (requirement-store.ts:93) | 6 | M1 | 需求状态迁移审计:from→to + triggered_by + comment |
 | `task_steps` | `TaskStepStore` (task-step-store.ts:58) | 18 | M1 | 需求分解步骤:stepOrder + role + retry/maxRetries + sessionId(执行时绑定) |

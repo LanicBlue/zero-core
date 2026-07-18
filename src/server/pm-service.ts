@@ -68,7 +68,7 @@ import type { AgentStore } from "./agent-store.js";
 import type { ProjectStore } from "./project-store.js";
 import type { RequirementStore } from "./requirement-store.js";
 import type { RequirementDocStore } from "./requirement-doc-store.js";
-import type { WikiStore } from "./wiki-node-store.js";
+
 import type { OrchestrateManifestStore } from "./orchestrate-store.js";
 import type { WikiSkeletonService } from "./wiki-skeleton-service.js";
 import type { CoreDatabase } from "./core-database.js";
@@ -94,7 +94,7 @@ export interface PmServiceDeps {
 	projectStore: ProjectStore;
 	requirementStore: RequirementStore;
 	requirementDocStore: RequirementDocStore;
-	wikiNodeStore: WikiStore;
+	
 	manifestStore?: OrchestrateManifestStore;
 	/** v0.8 P7: archivist 合并入口(verify 通过 → mergeFeatureToMain + 增量扫描)。 */
 	archivistService?: WikiSkeletonService;
@@ -163,7 +163,7 @@ export class PmService {
 	 */
 	readProjectWikiSummary(projectId: string, maxNodes = 25): string {
 		try {
-			const nodes = this.deps.wikiNodeStore.listByProject(projectId);
+			const nodes: { type: string; title: string; summary?: string }[] = []; // plan-08 §1: legacy wikiNodeStore removed; PM wiki summary now via Wiki tool expand project://
 			if (nodes.length === 0) return "";
 			const slice = nodes.slice(0, maxNodes);
 			return slice

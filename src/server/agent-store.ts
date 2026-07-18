@@ -56,13 +56,14 @@ const COLUMNS: ColumnDef[] = [
 	// was merged into wikiAnchors (knowledge base = wiki), so it is no longer
 	// round-tripped here.
 	{ key: "subagents", json: true },
-	{ key: "wikiAnchors", json: true },
+	// plan-08 §1: wikiAnchors column round-trip removed. Physical
+	// agents.wiki_anchors column on upgraded DBs is kept (legacy data,
+	// inert); fresh DBs no longer create it. See db-migration.ts.
 	// wiki-system-redesign plan-05 §1: new Wiki config schema round-trip.
 	// JSON-stored as single TEXT columns (parity with wikiAnchors). wikiGrants
 	// is the explicit grants array (compiled at session build); wikiContext is
 	// the prompt-injection entries; wikiPolicyRevision is the monotonic revision
-	// number used for cache invalidation. Legacy `wikiAnchors` is RETAINED
-	// (plan-08 deletion) but runtime ignores it from this sub forward.
+	// number used for cache invalidation.
 	{ key: "wikiGrants", json: true },
 	{ key: "wikiContext", json: true },
 	{ key: "wikiPolicyRevision", column: "wiki_policy_revision", number: true },

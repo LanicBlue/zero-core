@@ -534,14 +534,13 @@ describe("[adversarial #1] ExtractorB instantiation status after buildExtractorB
 		).toEqual([]);
 	});
 
-	test("ExtractorBService is constructed ONLY in tests (m5-extractors)", () => {
-		// Cross-check: the test file m5-extractors.test.ts DOES construct it
-		// (so the class isn't dead-dead; it's just unused-in-production).
+	test("ExtractorBService is constructed ONLY in tests (now: NO test file)", () => {
+		// plan-08 §1 removed the legacy wiki tests (m5-extractors.test.ts
+		// among them) since they imported the deleted WikiStore. The class
+		// itself may still exist in src/, but no test constructs it now —
+		// the cross-check flips to "test file gone".
 		const testFile = join(REPO_ROOT, "tests", "unit", "m5-extractors.test.ts");
-		const src = readFileSync(testFile, "utf8");
-		const stripped = stripComments(src);
-		const hits = (stripped.match(/new\s+ExtractorBService\b/g) ?? []).length;
-		expect(hits, "m5-extractors.test.ts must still exercise ExtractorB (sub-5 keeps the class)").toBeGreaterThan(0);
+		expect(existsSync(testFile), "m5-extractors.test.ts was removed in plan-08 §1").toBe(false);
 	});
 });
 

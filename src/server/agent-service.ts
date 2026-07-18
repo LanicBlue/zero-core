@@ -77,7 +77,7 @@ import { pendingResponses } from "../runtime/pending-responses.js";
 // (type-only imports — runtime layer never sees the store classes via this file).
 import type { ProjectStore } from "./project-store.js";
 import type { RequirementStore } from "./requirement-store.js";
-import type { ProjectWikiStore } from "./project-wiki-store.js";
+
 import type { TaskStepStore } from "./task-step-store.js";
 import type { ProjectWorkStore } from "./project-work-store.js";
 // skill-system sub-9:运行时 skill section 渲染(scanner + buildSkillsSection 单一真理源)。
@@ -173,29 +173,11 @@ function toolEnabled(
  */
 type CapabilityHandles = {
 	management?: unknown;
-	wikiStore?: unknown;
 	requirementStore?: unknown;
 	pmService?: unknown;
 };
 
 /**
- * sub-7 (work-context 拆解到三通道): shallow Wiki baseline for a project,
- * sorted by path and indented by depth (moved verbatim from the deleted
- * workflow-context-hook). Used by buildWorkContextClosures to render the
- * Wiki Baseline sub-block of the work-context system section.
- */
-function getWikiBaseline(wikiStore: ProjectWikiStore, projectId: string): string {
-	const nodes = wikiStore.listByProject(projectId);
-	if (nodes.length === 0) return "";
-	const sorted = nodes
-		.filter((n) => n.summary)
-		.sort((a, b) => a.path.localeCompare(b.path));
-	return sorted.map((n) => {
-		const depth = n.path.split("/").length - 1;
-		const indent = "  ".repeat(Math.max(0, depth - 1));
-		return `${indent}${n.path} — ${n.summary}`;
-	}).join("\n");
-}
 
 /**
  * plan-00 round-2 FIX 6：为 AgentService 构造函数提供 DatabaseManager 感知的
@@ -253,13 +235,6 @@ export class AgentService implements PlatformObserver {
 	// write better requirements (acceptance-M4 line 3).
 	private pmService: any = null;
 	private requirementStore: any = null;
-	private wikiStore: any = null;
-	// v0.8 (M5): the global WikiStore (not the ProjectWikiStore back-compat
-	// wrapper). Surfaced onto every session config so extractor A can write
-	// global memory nodes (decision 46 N2 — memory hangs under global type
-	// nodes, NOT under any project subtree), and so recall (memory-hooks)
-	// can read those nodes back.
-	private wikiStoreGlobal: any = null;
 	// v0.8 (M5): extractor config (extractors.A/B enabled + provider/model
 	// overrides). Threaded into every session config so the compression trigger
 	// (sub-5) + archive (sub-8) can resolve the Extractor A model, and so any
@@ -285,7 +260,7 @@ export class AgentService implements PlatformObserver {
 	private workContextStores: {
 		projectStore: ProjectStore;
 		requirementStore: RequirementStore;
-		wikiStore: ProjectWikiStore;
+		
 		taskStepStore: TaskStepStore;
 		projectWorkStore?: ProjectWorkStore;
 	} | null = null;
@@ -453,10 +428,9 @@ export class AgentService implements PlatformObserver {
 	 * loop — without requiring the caller to thread them through
 	 * sendProjectPrompt.
 	 */
-	setPmService(pmService: any, requirementStore: any, wikiStore?: any): void {
+setPmService(pmService: any, requirementStore: any): void {
 		this.pmService = pmService;
 		this.requirementStore = requirementStore;
-		this.wikiStore = wikiStore ?? null;
 		// Re-inject capability handles into loops created BEFORE pmService was
 		// wired. At startup, restoreAllSessions (and historically recovery) run
 		// before this call, so those loops were built with a null wikiStore/
@@ -491,8 +465,11 @@ export class AgentService implements PlatformObserver {
 	 * read from this.config.extractors (loaded in the constructor via
 	 * loadConfig). (steps-overhaul sub-10: checkpointThresholds dropped.)
 	 */
-	setWikiStoreGlobal(wikiStoreGlobal: any): void {
-		this.wikiStoreGlobal = wikiStoreGlobal ?? null;
+	/**
+	 * v0.8 (M5) → plan-08 §1: legacy setWikiStoreGlobal removed; only the
+	 * extractorsConfig assignment remains (sub-5 hook wiring reads it).
+	 */
+	setExtractorsConfigFromLoad(): void {
 		this.extractorsConfig = (this.config as any).extractors ?? null;
 	}
 	/** v0.8 (P3 §7.7 #4): inject the tool-call usage log store. */
@@ -509,7 +486,7 @@ export class AgentService implements PlatformObserver {
 	setWorkContextStores(stores: {
 		projectStore: ProjectStore;
 		requirementStore: RequirementStore;
-		wikiStore: ProjectWikiStore;
+		
 		taskStepStore: TaskStepStore;
 		projectWorkStore?: ProjectWorkStore;
 	}): void {
@@ -556,12 +533,7 @@ export class AgentService implements PlatformObserver {
 					parts.push(`## Project\n- Name: ${project.name}\n- Working directory: ${project.workspaceDir}`);
 				}
 			}
-			if (policy.injectWikiBaseline && projectId) {
-				const baseline = getWikiBaseline(stores.wikiStore, projectId);
-				if (baseline) {
-					parts.push(`## Wiki Baseline\n${baseline}`);
-				}
-			}
+			// plan-08 §1: Wiki Baseline injection removed — agents use the Wiki tool (action:expand project://) for the same outline on demand.
 			if (policy.injectRequirementDetail && activeRequirementId) {
 				const req = stores.requirementStore.get(activeRequirementId);
 				if (req) {
@@ -730,23 +702,59 @@ export class AgentService implements PlatformObserver {
 	/** wiki-context closure 文本 cache(per-session)。 */
 	private readonly wikiContextClosureCache = new Map<string, string>();
 
+	/**
+	 * 正在进行的 refreshWikiContextCache promise(per-session)。让 async 调用者
+	 * 可以 await 已 fire-and-forget 启动的 cache 填充,闭合首 turn race
+	 * (plan-08 sub-05 defer B6)。
+	 */
+	private readonly wikiContextCacheRefreshing = new Map<string, Promise<void>>();
+
 	/** 异步刷新 wiki-context cache(由 closure 启动时 + hot-reload 时调用)。 */
 	private async refreshWikiContextCache(
 		sessionId: string,
 		access: CompiledWikiAccess,
 		entries: WikiContextEntry[],
 	): Promise<void> {
-		try {
-			const wikiService = getWikiService();
-			if (!wikiService) return;
-			const section = await compileWikiContext({
-				wikiService,
-				access,
-				entries,
-			});
-			this.wikiContextClosureCache.set(sessionId, section.text);
-		} catch (err) {
-			log.warn("agent", `refreshWikiContextCache failed (session=${sessionId}): ${(err as Error).message}`);
+		// plan-08 sub-05 defer B6:把 promise 存到 map,让 awaitWikiContextCache
+		// Ready 能在 sendProjectPrompt 这种 async 路径里 await 同一 in-flight
+		// 操作,避免重复触发 + 让首 turn 在 register loop 前等 cache 就绪。
+		const existing = this.wikiContextCacheRefreshing.get(sessionId);
+		if (existing) return existing;
+		const p = (async () => {
+			try {
+				const wikiService = getWikiService();
+				if (!wikiService) return;
+				const section = await compileWikiContext({
+					wikiService,
+					access,
+					entries,
+				});
+				this.wikiContextClosureCache.set(sessionId, section.text);
+			} catch (err) {
+				log.warn("agent", `refreshWikiContextCache failed (session=${sessionId}): ${(err as Error).message}`);
+			} finally {
+				this.wikiContextCacheRefreshing.delete(sessionId);
+			}
+		})();
+		this.wikiContextCacheRefreshing.set(sessionId, p);
+		return p;
+	}
+
+	/**
+	 * 等待 session 的 wiki-context cache 填充完成(若 in-flight);无 in-flight
+	 * 立即返回。plan-08 sub-05 defer B6 修法:sendProjectPrompt 等 async 路径
+	 * 在 register loop 之前 await,确保首 turn assemble() 看到 section。
+	 *
+	 * 失败不抛(refreshWikiContextCache 内部已 catch + log)。
+	 */
+	async awaitWikiContextCacheReady(sessionId: string): Promise<void> {
+		const inFlight = this.wikiContextCacheRefreshing.get(sessionId);
+		if (inFlight) {
+			try {
+				await inFlight;
+			} catch {
+				// 已经在 refreshWikiContextCache 里 log 过;不抛。
+			}
 		}
 	}
 
@@ -1341,8 +1349,7 @@ export class AgentService implements PlatformObserver {
 		const needMgmt = on("Project") || on("Work") || on("AgentRegistry") || on("Cron");
 		if (this.management && needMgmt) caps.management = this.management;
 		else if (needMgmt && !this.management) console.warn("[capability] toolPolicy enables Project/Work/AgentRegistry/Cron but management service is not initialized — tool will be offered but fail at call time");
-		if (this.wikiStore && on("Wiki")) caps.wikiStore = this.wikiStore;
-		else if (on("Wiki") && !this.wikiStore) console.warn("[capability] toolPolicy enables Wiki but wikiStore is not initialized — tool will be offered but fail at call time");
+		// plan-08 §1: Wiki v2 tool reads getWikiService() singleton directly; no capability injection.
 		// project-flow F3: Flow is the single requirement-flow entry point (old
 		// CreateRequirement / CreateRequirementWithDoc / verify retired). Flow's
 		// compound verify action needs the requirement store + pmService (the
@@ -1429,7 +1436,6 @@ export class AgentService implements PlatformObserver {
 		};
 		// Re-attach the SAME wiki/extractors handles the parent loop had so the
 		// Q5b memory turn's Wiki tool writes into the parent's topic subtree.
-		if (this.wikiStoreGlobal) (cfg as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (cfg as any).extractors = this.extractorsConfig;
 		(cfg as any).compression = this.config.compression;
 		return cfg;
@@ -2150,7 +2156,6 @@ export class AgentService implements PlatformObserver {
 		// (gating is single-layer toolPolicy; the handle is the runtime dep).
 		const caps = this.capabilityHandlesFor(sessionConfig.toolPolicy);
 		if (caps.management) (sessionConfig as any).management = caps.management;
-		if (caps.wikiStore) (sessionConfig as any).wikiStore = caps.wikiStore;
 		if (caps.requirementStore) (sessionConfig as any).requirementStore = caps.requirementStore;
 		if (caps.pmService) (sessionConfig as any).pmService = caps.pmService;
 		// project-flow F2: surface the hub's emitTransition so the Flow tool can
@@ -2177,7 +2182,6 @@ export class AgentService implements PlatformObserver {
 		// so even non-project sessions need access). The extraction hook reads
 		// config.extractors + config.wikiStoreGlobal; recall (memory-hooks)
 		// reaches config.wikiStoreGlobal for searchMemoryNodes.
-		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
 		if (this.extractorsConfig) (sessionConfig as any).extractors = this.extractorsConfig;
 		// skill-system sub-9 (Approach A): inject the skills section closure so
 		// the AgentLoop's `skills` system section renders the agent's enabled
@@ -2193,7 +2197,6 @@ export class AgentService implements PlatformObserver {
 		// config so the loop can resolve + inject them (system + context
 		// channels). Auto anchors (memory + project) are derived from the
 		// contextBundle inside the loop.
-		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 		// wiki-system-redesign plan-05 §4/§7:compile Wiki access + context
 		// section. AgentLoop 只消费通用 dynamicSystemSections + wikiAccess,
 		// 不识别 Wiki 语义。contextBundle.projectId 决定 active project;
@@ -2349,7 +2352,6 @@ export class AgentService implements PlatformObserver {
 			projectId?: string;
 			projectPath?: string;
 			projectName?: string;
-			wikiStore?: any;
 			activeRequirementId?: string;
 			/** v0.8 project-work:触发本 turn 的工位。sub-7:work-context closures 据此读 work.contextPolicy 渲染 system/workbench 段。 */
 			workId?: string;
@@ -2429,7 +2431,6 @@ export class AgentService implements PlatformObserver {
 				workspaceDir: cwd,
 				wikiRootNodeId: "wiki-root:" + context.projectId,
 			} : undefined,
-			wikiStore: context.wikiStore,
 		} as any;
 
 		// 可选工具上下文 stores + git(需求管理工位等需要,与 sendRolePrompt 对齐)。
@@ -2440,8 +2441,6 @@ export class AgentService implements PlatformObserver {
 		(sessionConfig as any).gitIntegration = context.gitIntegration;
 
 		// P1 §10.6 wiki anchor injection —— archivist 写 wiki 靠它解析锚点。
-		if (this.wikiStoreGlobal) (sessionConfig as any).wikiStoreGlobal = this.wikiStoreGlobal;
-		if (agent?.wikiAnchors) (sessionConfig as any).wikiAnchors = agent.wikiAnchors;
 		// Step 1B: thread hook wiring deps (subagent-delegator uses them).
 		sessionConfig.hookWiringDeps = this.buildHookDeps();
 
@@ -2477,6 +2476,16 @@ export class AgentService implements PlatformObserver {
 		if (wikiCompiled.dynamicSection) {
 			(sessionConfig as { dynamicSystemSections?: DynamicSystemSection[] }).dynamicSystemSections = [wikiCompiled.dynamicSection];
 		}
+
+		// plan-08 sub-05 defer (B6 首 turn cache race):sendProjectPrompt 是
+		// async 路径,可以 await。预填 wiki-context closure cache 后再 register
+		// loop,避免首 turn assemble() 在 refreshWikiContextCache 异步解析前发
+		// 生 → section 缺失。compileWikiAccessForSession 内部已 fire-and-forget
+		// 启动 refresh,这里 await 同一 promise 等其完成。
+		// 残余 race:sync 调用者(createLoopForSession)无法 await;cacheBreak:
+		// true 兜底使 turn 2+ 重算时 cache 已填。dispatched work / cron 走本路径,
+		// 是多 agent 工作流首次 Wiki 调用最密集的场景,优先闭这。
+		await this.awaitWikiContextCacheReady(sessionId);
 
 		let loop = this.loops.get(sessionId);
 		// sub-2: shared construction point — also wires archiveDelegatedSession

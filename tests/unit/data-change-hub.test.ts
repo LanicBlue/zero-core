@@ -34,17 +34,19 @@ describe("data-change-hub", () => {
 
 		emitDataChange("agents", "a1", "create");
 		emitDataChange("projects", "p1", "create");
-		emitDataChange("project_wiki", "w1", "create");
+		emitDataChange("crons", "c1", "create");
 		// High-frequency tables must NOT broadcast.
 		emitDataChange("messages", "m1", "create");
 		emitDataChange("tool_usage", "t1", "create");
 		emitDataChange("turns", "tu1", "create");
+		// plan-08 §1: project_wiki was REMOVED from UI_COLLECTIONS — must NOT broadcast.
+		emitDataChange("project_wiki", "w1", "create");
 
 		// Flush is async (setTimeout 0).
 		await new Promise((r) => setTimeout(r, 0));
 
 		const collections = cb.mock.calls.map((c) => c[0].collection).sort();
-		expect(collections).toEqual(["agents", "project_wiki", "projects"]);
+		expect(collections).toEqual(["agents", "crons", "projects"]);
 	});
 
 	test("carries the pushed record so renderers patch without a GET", async () => {
@@ -75,15 +77,15 @@ describe("data-change-hub", () => {
 		const cb = vi.fn();
 		onDataChange(cb);
 
-		// Simulate a bulk write (e.g. archivist scanning 50 wiki nodes).
-		for (let i = 0; i < 50; i++) emitDataChange("project_wiki", `w${i}`, "create", { id: `w${i}` });
+		// Simulate a bulk write (e.g. indexer scanning 50 requirements).
+		for (let i = 0; i < 50; i++) emitDataChange("requirements", `r${i}`, "create", { id: `r${i}` });
 
 		await new Promise((r) => setTimeout(r, 0));
 
-		// All 50 collapse into a single flush for "project_wiki", carrying all ids.
+		// All 50 collapse into a single flush for "requirements", carrying all ids.
 		expect(cb).toHaveBeenCalledTimes(1);
 		const evt = cb.mock.calls[0][0];
-		expect(evt.collection).toBe("project_wiki");
+		expect(evt.collection).toBe("requirements");
 		expect(evt.changes.length).toBe(50);
 	});
 

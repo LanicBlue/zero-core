@@ -351,7 +351,10 @@ export interface CallerCtx {
 	 * 注入逻辑)。**保留理由**:AgentLoop 侧还没填 callerCtx.scope(那是
 	 * sendProjectPrompt 重接的事,sub-5 范围外);删了 Wiki 会丢读/写范围。
 	 */
-	wikiAnchorNodeIds?: string[];
+	/**
+	 * plan-08 §1: legacy wikiAnchorNodeIds field removed from CallerCtx.
+	 * Wiki v2 tool reads callerCtx.wikiAccess (CompiledWikiAccess) only.
+	 */
 	/**
 	 * Session context bundle({projectId, workspaceDir, wikiRootNodeId} 等)。loop
 	 * 从 config.contextBundle 注入;Flow/Orchestrate 工具读它取 workspaceDir(写

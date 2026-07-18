@@ -7,7 +7,7 @@
 // 字段切换 7 个操作 (§7.3):
 //   - create         建 Agent。template 可选 → 从 role preset 拷身份 +
 //                     toolPolicy + 接好 subagents (替代旧 InstantiatePreset)
-//   - update         改 systemPrompt / toolPolicy / subagents / wikiAnchors /
+//   - update         改 systemPrompt / toolPolicy / subagents /
 //                     name / model (合并旧 SetToolPolicy / SetToolEnabled)
 //   - delete         删 Agent(zero protected → reject)
 //   - get            读一条 Agent
@@ -81,7 +81,6 @@ function summaryOf(a: any): any {
 		workspaceDir: a.workspaceDir ?? null,
 		thinkingLevel: a.thinkingLevel ?? null,
 		subagents: a.subagents?.length ?? 0,
-		wikiAnchors: a.wikiAnchors?.length ?? 0,
 		updatedAt: a.updatedAt ?? null,
 	};
 }
@@ -130,13 +129,8 @@ const subagentsShape = z.array(
 	}),
 );
 
-const wikiAnchorsShape = z.array(
-	z.object({
-		nodeId: z.string(),
-		inject: z.enum(["system", "context", "off"]),
-		depth: z.number().optional(),
-	}),
-);
+// plan-08 §1: wikiAnchorsShape removed (AgentRegistry tool no longer
+// accepts wikiAnchors input — field dropped from AgentRecord).
 
 const toolPolicyShape = z.object({
 	autoApprove: z.array(z.string()).optional(),
@@ -173,7 +167,6 @@ export const agentRegistryActionSchema = z.object({
 	provider: z.string().optional(),
 	toolPolicy: toolPolicyShape.optional(),
 	subagents: subagentsShape.optional(),
-	wikiAnchors: wikiAnchorsShape.optional(),
 	// update/delete/get
 	id: z.string().optional(),
 	// getTemplate
@@ -192,9 +185,9 @@ export const agentRegistryTool = buildTool({
 		"Manage the global Agent registry via a single action-switched tool.\n\n" +
 		"(Note: 'AgentRegistry' manages role-agent records. The separate 'Subagent' tool delegates a task to a sub-agent — different capability.)\n\n" +
 		"Actions:\n" +
-		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents?, wikiAnchors? } — create a global agent from scratch. `name` is required.\n" +
+		"- { action:'create', name, systemPrompt?, model?, provider?, toolPolicy?, subagents? } — create a global agent from scratch. `name` is required.\n" +
 		"- { action:'create', template, name?, model?, provider? } — instantiate a template. `template` accepts the id OR (case-insensitive) name from `listTemplates` (e.g. 'Coder' or its uuid). systemPrompt + toolPolicy come from the template; the optional `name`/`model`/`provider` override the template defaults (use `name` so each instance is distinguishable). Further customize via `update`.\n" +
-		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/wikiAnchors? } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents/wikiAnchors are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
+		"- { action:'update', id, name?/systemPrompt?/model?/toolPolicy?/subagents?/ } — single mutation surface. toolPolicy is MERGED (toggle one tool without wiping the rest: {toolPolicy:{tools:{WebSearch:{enabled:false}}}} only disables WebSearch); subagents are replaced wholesale. create/update/list return a compact summary — use `get` for full detail.\n" +
 		"- { action:'delete', id } — delete. The 'zero' management agent is protected and cannot be deleted.\n" +
 		"- { action:'get', id } — read one (full record).\n" +
 		"- { action:'list' } — list all agents (compact summary).\n" +
@@ -235,7 +228,6 @@ export const agentRegistryTool = buildTool({
 						provider: input.provider,
 						toolPolicy: input.toolPolicy as any,
 						subagents: input.subagents,
-						wikiAnchors: input.wikiAnchors,
 					});
 					return summaryOf(created);
 				}
@@ -250,7 +242,6 @@ export const agentRegistryTool = buildTool({
 					// toggling one tool won't wipe the rest.
 					if (input.toolPolicy !== undefined) patch.toolPolicy = input.toolPolicy;
 					if (input.subagents !== undefined) patch.subagents = input.subagents;
-					if (input.wikiAnchors !== undefined) patch.wikiAnchors = input.wikiAnchors;
 					return summaryOf(svc.updateAgent(input.id, patch));
 				}
 				case "delete":

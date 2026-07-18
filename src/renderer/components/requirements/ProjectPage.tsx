@@ -937,7 +937,6 @@ function ProjectWorkCard({ projectId, works, agents, onRefresh }: {
 								<option value="requirements">requirements</option>
 								<option value="projects">projects</option>
 								<option value="crons">crons</option>
-								<option value="project_wiki">project_wiki</option>
 								<option value="agents">agents</option>
 							</select>
 							<select value={tNewOp} onChange={(e) => setTNewOp(e.target.value as any)} style={{ ...inputStyle, width: "auto" }}>
