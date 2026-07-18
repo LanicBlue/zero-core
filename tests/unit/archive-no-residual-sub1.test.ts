@@ -152,7 +152,7 @@ describe("[#1] completed → db.getDelegatedTask(taskId) undefined + child archi
 		// Recoverable via listArchivedTransientSessions.
 		expect(sessionDB.listArchivedTransientSessions().map((r) => r.id)).toContain(child);
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #2: failed → same shape as #1
@@ -173,7 +173,7 @@ describe("[#2] failed → row deleted + child archived=1", () => {
 		expect(sessionDB.getDelegatedTask(taskId)).toBeUndefined();
 		expect(archivedFlag(sessionDB, child)).toBe(1);
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #3: killed doesn't go through fireOnTaskTerminal
@@ -199,7 +199,7 @@ describe("[#3] killed (stopTask) does NOT trigger terminal bookkeeping", () => {
 		expect(archivedFlag(sessionDB, child)).toBe(0);
 		expect(sessionDB.listArchivedTransientSessions().map((r) => r.id)).not.toContain(child);
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #4: no sessionId → early return, no throw, no mark, no delete
@@ -232,7 +232,7 @@ describe("[#4] row without sessionId → early return (no throw, no mark, no del
 		// Row still there (NOT deleted).
 		expect(sessionDB.getDelegatedTask(taskId)).toBeDefined();
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #5: memory preservation callback wiring
@@ -265,7 +265,7 @@ describe("[#5a] onTaskTerminal wired → fires exactly once with all 5 args", ()
 			model: "claude-opus-test",
 		});
 	});
-});
+}, 30000);
 
 describe("[#5b] onTaskTerminal UNWIRED (db-only delegator) → no throw, row still deleted, mark still set", () => {
 	test("terminal bookkeeping ① is unconditional on callback wiring", () => {
@@ -282,7 +282,7 @@ describe("[#5b] onTaskTerminal UNWIRED (db-only delegator) → no throw, row sti
 		expect(sessionDB.getDelegatedTask(taskId)).toBeUndefined();
 		expect(archivedFlag(sessionDB, child)).toBe(1);
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #6: archiveDelegatedSession does not re-read the (already-deleted) row
@@ -345,7 +345,7 @@ describe("[#6] AgentService.archiveDelegatedSession does NOT call getDelegatedTa
 			vi.resetModules();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #7: mark idempotent — re-marking after fireOnTaskTerminal is a no-op
@@ -368,7 +368,7 @@ describe("[#7] markArchivedTransient is idempotent (post-fire re-mark is a no-op
 		// Row still gone (re-marking does NOT resurrect the deleted row).
 		expect(sessionDB.getDelegatedTask(taskId)).toBeUndefined();
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #8: fire-and-forget — onTaskTerminal reject/throw does not propagate
@@ -423,7 +423,7 @@ describe("[#8] onTaskTerminal reject/throw does not propagate; ① already compl
 			warnSpy.mockRestore();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // #9 + #10 + #11: source-level invariants

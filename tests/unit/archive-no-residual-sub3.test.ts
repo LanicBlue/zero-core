@@ -216,6 +216,16 @@ describe("[#8, #9, #10] source-level invariants (archive-no-residual sub-3)", ()
 // ===========================================================================
 
 describe("[#1-#7] behavioral cascade tests", () => {
+	// P1-3 (2026-07-18): per-describe timeout (passed as the 3rd arg to
+	// describe below — SuiteOptions.timeout, vitest 4). Each test boots the
+	// REAL AgentService + CoreDatabase + full cascade archive pipeline
+	// (multiple SQLite handles, vi.resetModules dynamic re-imports, real
+	// archive-service.js with withWikiLock + JSON export). Under the thread
+	// cap (maxThreads=4) this legitimately exceeds the 5s default. A test
+	// that times out also leaves stale vi.doMock state that breaks the
+	// NEXT test's interceptor (observed in run 3: #1 timed out, then #2
+	// assertion-empty because the doMock never took effect). Per-describe
+	// timeout fixes both. NOT a global raise.
 	let tmp: string;
 	let db: InstanceType<typeof CoreDatabaseCtor>;
 
@@ -792,4 +802,4 @@ describe("[#1-#7] behavioral cascade tests", () => {
 			warnSpy.mockRestore();
 		}
 	});
-});
+}, 30000);

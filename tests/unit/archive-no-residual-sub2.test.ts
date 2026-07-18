@@ -167,6 +167,15 @@ describe("[#1-#4] source-level invariants (archive-no-residual sub-2)", () => {
 // ===========================================================================
 
 describe("[#5-#8] behavioral tests (real AgentService + real CoreDatabase)", () => {
+	// P1-3 (2026-07-18): per-describe timeout (passed as the 3rd arg to
+	// describe below —SuiteOptions.timeout, vitest 4). Each test in this
+	// block boots the REAL AgentService + CoreDatabase (full schema
+	// migrations, multiple SQLite handles, vi.resetModules dynamic
+	// re-imports of the runtime graph). Under the thread cap (maxThreads=4)
+	// this legitimately exceeds the 5s default — the suite-level budget is
+	// unchanged; this block gets the headroom it actually needs (the
+	// assertions themselves are sub-100ms once boot finishes). NOT a global
+	// raise.
 	let tmp: string;
 	let db: InstanceType<typeof CoreDatabaseCtor>;
 
@@ -545,7 +554,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real CoreDatabase)", () 
 			fireSpy.mockRestore();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // Order change in createLoopForSession — adversarial regression check.

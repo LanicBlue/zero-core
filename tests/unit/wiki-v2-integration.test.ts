@@ -156,6 +156,12 @@ function makeHarness(projectId: string, workspaceDir: string): Harness {
 //
 // This is a static + behavioural cross-check (grep the source + behaviour).
 
+// Per-describe timeout (Vitest 4 bare-number form): real-git I/O (init/commit/
+// merge/worktree/diff) under the capped thread pool (maxThreads:4) needs headroom
+// beyond the 5000ms global testTimeout (left at 5s by design — raising it would
+// mask real hangs). Every describe below that spawns real git plumbing OR boots
+// the real AgentService+CoreDatabase gets `, 30000` for the same reason — see
+// the sibling wiki-v2-sync.test.ts for the precedent.
 describe("D1 — WikiSkeletonService shim has NO reachable structural-WRITE path", () => {
 	test("shim deps type carries no wikiStore / cursorStore / wikiDb / nodeRepo handle", () => {
 		// Static contract: the WikiSkeletonServiceDeps shape only has indexer/git/
@@ -241,7 +247,7 @@ describe("D1 — WikiSkeletonService shim has NO reachable structural-WRITE path
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §C — Commit/merge integration (Git success → indexer.sync → records SHA)
@@ -429,7 +435,7 @@ describe("§C commit/merge — successful Git op delegates to indexer + records 
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §C — formal routes (index.ts /api/archivist/*) all delegate to the shim
@@ -588,7 +594,7 @@ describe("§G — all tracked files indexed (suffix-agnostic)", () => {
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 describe("§G — sync failure does NOT advance indexed_revision", () => {
 	test("sync to nonexistent revision → repo stays at old indexed_revision + status=failed", async () => {
@@ -637,7 +643,7 @@ describe("§G — sync failure does NOT advance indexed_revision", () => {
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §G BLOCKER #2 (FLIPPED) — incremental sync APPLIES the modify
@@ -722,7 +728,7 @@ describe("§G BLOCKER #2 (FLIPPED) — incremental sync over modify APPLIES the 
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §G BLOCKER #1 (FLIPPED) + SUBDIR coverage gap (round-1 miss)
@@ -921,7 +927,7 @@ describe("§G BLOCKER #1 (FLIPPED) + SUBDIR coverage — nested files all indexe
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §C — Formal commit/merge/scan/rescan/rebuild ROUTES integration
@@ -974,7 +980,7 @@ describe("§C — formal routes via shim delegate to the new indexer (live)", ()
 			try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // D3 — project-work-hook-manager UNCHANGED: shim-delegation satisfies §6

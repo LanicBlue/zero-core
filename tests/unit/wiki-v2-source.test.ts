@@ -304,7 +304,7 @@ describe("§D + CONCERN 7 (FLIPPED): source_root escape rejected at binding", ()
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // BLOCKER #4 (FLIPPED) — readIndexedSource returns blob bytes.
@@ -360,7 +360,7 @@ describe("BLOCKER #4 (FLIPPED): readIndexedSource returns EXACT blob bytes", () 
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D byte contract (IMPLEMENTED from round-1 test.todo) — line range semantics.
@@ -416,7 +416,7 @@ describe("§D readIndexedSource line-range contract (IMPLEMENTED)", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D workspace read — dirty tag + escape rejection.
@@ -455,7 +455,7 @@ describe("§D readWorkspaceSource — dirty tag; reject checkout-external paths"
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D search — cwd-by-binding (no model cwd field).
@@ -480,7 +480,7 @@ describe("§D source search — request schema has NO cwd field (server-derived)
 		expect(req.pattern).toBe("x");
 		expect((req as Record<string, unknown>).cwd).toBeUndefined();
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D search — cwd derived from binding, results map to canonical path.
@@ -692,7 +692,7 @@ describe("§D + CONCERN 8 (FLIPPED): search hits map to canonical path; binding 
 			try { rmSync(tempRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D regex limits — pattern bytes, output bytes, results count, timeout.
@@ -778,7 +778,7 @@ describe("§D regex limits — REGEX_LIMIT_EXCEEDED / REGEX_TIMEOUT", () => {
 			try { rmSync(tempRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D scope — escapes rejected; effective scope derived from binding.
@@ -831,7 +831,7 @@ describe("§D scope escape — `..` / absolute scope rejected", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D limits are surfaced in the result for caller verification.
@@ -855,7 +855,7 @@ describe("§D limits are surfaced in the result for caller verification", () => 
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // CONCERN 9 — resolveRipgrepBinary (env > bundled > VSCode > PATH); ENOENT
@@ -901,4 +901,4 @@ describe("CONCERN 9: ripgrep binary resolution + ENOENT → SOURCE_UNAVAILABLE",
 			h.dispose();
 		}
 	});
-});
+}, 30000);

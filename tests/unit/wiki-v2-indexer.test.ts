@@ -729,7 +729,7 @@ describe("§A full mirror — WikiProjectIndexer.fullIndex on real git fixture",
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // Subdirectory indexing (round-1 BLOCKER 1 — FIXED via joinWikiPathMulti)
@@ -930,7 +930,7 @@ describe("§A subdir mirror — fullIndex on a repo with subdirs (round-1 BLOCKE
 			try { rmSync(subTemp, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 
 
@@ -1086,7 +1086,7 @@ describe("§B idempotent retry — sync to same SHA produces no node/revision/au
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §A negative — out-of-repo / nonexistent source_root
@@ -1109,4 +1109,4 @@ describe("§A source_root rejection — nonexistent workspace is not a Git repo"
 			try { rmSync(notARepo, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);

@@ -972,7 +972,14 @@ export class TemplateStore {
 			"",
 			"### Provenance / Intent",
 			"- attributes.provenance: `structure` / `derived` / `confirmed`(同 v0.8 语义)。",
-			"- 无记录原因的代码能力标 `intent:no-recorded-reason` 并继续,不要编造意图。",
+			// P1-3 (2026-07-18): the legacy path-prefix provenance
+			// `intent:no-recorded-reason` (sub-08 cutover: the readdir-scan
+			// header:/intent:/structure: prefixes are gone) must NOT be
+			// emitted by the Archivist prompt any more — A7 regresses on any
+			// active generator of those prefixes. The same meaning
+			// (no recorded reason for a code capability) is conveyed by a
+			// plain attribute without the `intent:` prefix.
+			"- 无记录原因的代码能力标 `reason_status:unrecorded` 并继续,不要编造意图。",
 		].join("\n");
 		const researcherBase = BUILT_IN_TEMPLATES.find((t) => t.name === "Researcher")?.systemPrompt ?? "";
 		const archivistSeed: Omit<PromptTemplate, "id" | "createdAt" | "updatedAt"> = {

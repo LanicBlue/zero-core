@@ -1162,7 +1162,7 @@ describe("round-3 B1+C2 — exact mode truncated boundary [对抗 lens]", () => 
 			expect(r.truncated, "201 raw > 200 → truncated true").toBe(true);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 describe("round-3 B1+C2 — substring mode truncated boundary [对抗 lens]", () => {
 	test("substring 250 → truncated=true, exactly 200 hits", async () => {
@@ -1190,7 +1190,7 @@ describe("round-3 B1+C2 — substring mode truncated boundary [对抗 lens]", ()
 			expect(r.truncated).toBe(true);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 describe("round-3 B1+C2 — glob mode truncated boundary [对抗 lens]", () => {
 	test("glob 250 name match → truncated=true, exactly 200 hits", async () => {
@@ -1220,7 +1220,7 @@ describe("round-3 B1+C2 — glob mode truncated boundary [对抗 lens]", () => {
 		expect(r.truncated).toBe(false);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // round-4 B1-HYBRID — hybrid mode truncated boundary.
@@ -1360,7 +1360,7 @@ describe("round-4 B1-HYBRID — hybrid mode truncated boundary [对抗 lens]", (
 			expect(r.wikiHits.every((x) => x.matchType === "fulltext"), "primary = best-rank (fulltext)").toBe(true);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // round-6 NODE-SEMANTICS — node boundary (acceptance-04 §D round-6, 2026-07-17).
@@ -1536,7 +1536,7 @@ describe("round-6 NODE-SEMANTICS — node boundary [对抗 lens]", () => {
 			expect(seen.size, "150 distinct nodes seen").toBe(150);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // round-4 — fulltext mode truncated boundary (architecture round-3 gap #1).
@@ -1579,7 +1579,7 @@ describe("round-4 — fulltext mode truncated boundary [对抗 lens]", () => {
 			expect(r.truncated, "fulltext 200 → truncated false").toBe(false);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // round-3 C1 — kinds filter matrix
@@ -1704,7 +1704,7 @@ describe("round-3 C1 — kinds filter matrix [对抗 lens]", () => {
 			expect(r.truncated, "post-kinds rawCount=5 → truncated false").toBe(false);
 		} finally { h.dispose(); }
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // round-2 adversarial edge probes (FIX 2 / FIX 3 / FIX 4 + boundary inputs)

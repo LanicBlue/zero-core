@@ -398,7 +398,7 @@ describe("BLOCKER #2 (FLIPPED): real git sync C0→C1 over modify APPLIES the ch
 			try { rmSync(tempRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // SUBDIR sync coverage (round-1 gap) — depth-2 modify via real git.
@@ -533,7 +533,7 @@ describe("SUBDIR sync (round-1 gap): modify src/server/loop.ts (depth-2) applies
 			try { rmSync(tempRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // BLOCKER #1 (FLIPPED) — fullIndex on depth-2 tree now SUCCEEDS.
@@ -603,7 +603,7 @@ describe("BLOCKER #1 (FLIPPED): fullIndex on depth-2 repo SUCCEEDS (joinWikiPath
 			try { rmSync(tempRoot, { recursive: true, force: true }); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §B incremental sync — exercises applyDiffAtomically via mock git.
@@ -653,7 +653,7 @@ describe("§B modify — only source binding/blob/stale updated; curated fields 
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 describe("§B delete — archives node, leaves no active source binding", () => {
 	test("delete archives the source-bound node and removes its binding", async () => {
@@ -687,7 +687,7 @@ describe("§B delete — archives node, leaves no active source binding", () => 
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 describe("§B rename — preserves internal ID + summary/content/revision/links", () => {
 	test("rename keeps nodeId, summary, content, link; only path + source_path change", async () => {
@@ -757,7 +757,7 @@ describe("§B rename — preserves internal ID + summary/content/revision/links"
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // BLOCKER #3 (FLIPPED) — A↔B rename swap/cycle now SUCCEEDS via synthetic mock.
@@ -1008,7 +1008,7 @@ describe("BLOCKER #3 (FLIPPED): synthetic A↔B rename swap SUCCEEDS (two-phase 
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 describe("§B copy — treated as new node (does NOT reuse source ID)", () => {
 	test("copy a.ts → b.ts: b.ts is a NEW node distinct from a.ts's node", async () => {
@@ -1049,7 +1049,7 @@ describe("§B copy — treated as new node (does NOT reuse source ID)", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 describe("§B add — creates file node", () => {
 	test("add a new root-level file: node + binding created at NEW", async () => {
@@ -1115,7 +1115,7 @@ describe("§B add — creates file node", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §B fault injection (FLIPPED — CONCERN 6 fix) — enrich/diff phase throws now
@@ -1268,7 +1268,7 @@ describe("§B + CONCERN 6 (FLIPPED): fault injection rolls back; indexed_revisio
 			try { wiki.close(); } catch { /* ignore */ }
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §B idempotent retry — same SHA → 0 changesApplied, no audit noise.
@@ -1301,7 +1301,7 @@ describe("§B idempotent retry to same SHA", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 describe("D4: idempotent retry to same SHA writes ZERO audit rows (not one)", () => {
 	test("retry does NOT add index.sync or index.sync.failed audit rows", async () => {
@@ -1326,4 +1326,4 @@ describe("D4: idempotent retry to same SHA writes ZERO audit rows (not one)", ()
 			h.dispose();
 		}
 	});
-});
+}, 30000);

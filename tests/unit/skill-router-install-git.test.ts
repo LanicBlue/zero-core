@@ -411,4 +411,4 @@ const _fixtureParents = new Set<string>();
 		expect(res.status).toBe(201);
 		expect(existsSync(join(tmpHome, ".zero-core", "skills", "keep-git", ".git"))).toBe(true);
 	});
-});
+}, 30000);

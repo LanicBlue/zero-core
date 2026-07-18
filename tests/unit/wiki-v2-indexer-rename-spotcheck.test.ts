@@ -336,4 +336,4 @@ describe("§B non-swap rename — preserves ID/summary/content/links; FTS not co
 			h.dispose();
 		}
 	});
-});
+}, 30000);

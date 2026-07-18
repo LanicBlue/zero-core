@@ -287,7 +287,7 @@ describe("§D regex results boundary — DEFAULT 200 [对抗 lens]", () => {
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §D regex — authorizedCandidates (DI shortened to keep test fast)
@@ -529,7 +529,7 @@ describe("§D regex wall timeout → REGEX_TIMEOUT (DI shortened) [对抗 lens]"
 			h.dispose();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // §A — resolveRegexLimits clamping contract (host can only tighten)

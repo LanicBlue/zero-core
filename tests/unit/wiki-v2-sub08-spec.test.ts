@@ -206,29 +206,84 @@ describe("§A legacy absence — runtime reachability + fresh-DB migration", () 
 	});
 
 	// A7: no header:/intent:/structure: provenance generation or parsing in prod.
-	// These were the legacy readdir-scan provenance prefixes. The WikiSkeletonService
-	// shim explicitly documents their removal; grep confirms no generator remains.
+	// These were the legacy readdir-scan provenance prefixes (sub-08 cutover
+	// removed them). This guard fails if any TS/TSX file in src/ actively
+	// GENERATES (emits as a string/template literal in a prompt or attribute)
+	// or PARSES (startsWith / indexOf / split / regex) one of those prefixes.
+	//
+	// P1-3 (2026-07-18): the previous implementation shelled out to ripgrep
+	// via execSync, which silently no-op'd when rg was not on PATH (Windows
+	// default — the spawn error was swallowed by `try { ... } catch {}`,
+	// leaving `raw = ""` and the assertion vacuously green). This is a REAL
+	// regression vector: it would not catch a re-introduction. This
+	// Node-native scan is portable AND actually enforces the invariant.
+	//
+	// Not flagged (legitimate residue, not generation/parsing):
+	//   - CSS pseudo-class selectors `.foo-header:hover` (only .ts/.tsx scanned).
+	//   - Zod schema fields / TS object properties `header: z.string()` —
+	//     property name followed by a value, not a quoted prefix emission.
+	//   - Comments / JSDoc / historical references in legacy interface
+	//     docstrings (filtered before matching).
+	//   - Comments in wiki-skeleton-service / wiki-project-indexer documenting
+	//     the removal (filtered).
 	test("A7: no header:/intent:/structure: provenance generation in src/", () => {
-		const { execSync } = require("node:child_process") as typeof import("node:child_process");
-		// Search src/ for any code that WRITES these provenance prefixes. Comments
-		// and historical doc references are allowed; generation logic is not.
-		// Use ripgrep via execSync to classify hits (we only fail on real generation).
-		let raw = "";
-		try {
-			raw = execSync(
-				`rg -n "header:|intent:|structure:" src/ --no-heading || true`,
-				{ encoding: "utf-8", cwd: process.cwd() },
-			);
-		} catch { raw = ""; }
-		// Filter out comment/doc lines (// or * or //-) — only flag executable code.
-		const codeHits = raw
-			.split("\n")
-			.filter((l) => l.trim().length > 0)
-			.filter((l) => !/:\s*(\/\/|\*|\/\*)/.test(l)) // strip trailing comments
-			.filter((l) => !/^\s*[*/]/.test(l));            // strip block-comment lines
-		// wiki-skeleton-service.ts documents their removal in comments only — those
-		// are filtered above. Any remaining code hit is a real generator (FAIL).
-		expect(codeHits, `unexpected header/intent/structure code hits:\n${codeHits.join("\n")}`).toEqual([]);
+		const { readdirSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+		const { join, relative, extname } = require("node:path") as typeof import("node:path");
+
+		const SRC_ROOT = join(process.cwd(), "src");
+		const offenders: string[] = [];
+
+		// Walk src/ collecting .ts/.tsx files only (CSS / JSON / markdown excluded).
+		function walk(dir: string) {
+			for (const ent of readdirSync(dir, { withFileTypes: true })) {
+				const full = join(dir, ent.name);
+				if (ent.isDirectory()) {
+					walk(full);
+				} else if (ent.isFile() && (extname(full) === ".ts" || extname(full) === ".tsx")) {
+					full.endsWith(".d.ts") ? null : filesToScan.push(full);
+				}
+			}
+		}
+		const filesToScan: string[] = [];
+		walk(SRC_ROOT);
+
+		// Strip block /* ... */ comments (incl. multi-line JSDoc) + trailing
+		// line // comments BEFORE matching. Any reference inside a comment is
+		// historical documentation, not active generation.
+		function stripComments(src: string): string {
+			return src
+				.replace(/\/\*[\s\S]*?\*\//g, "")
+				.replace(/(^|[^:])\/\/.*$/gm, "$1");
+		}
+
+		// GENERATOR: a quoted (single/double/backtick) literal emitting one of
+		// the legacy prefixes. Catches prompt-template strings like
+		// `"intent:no-recorded-reason"` and template-literal builds. Object
+		// property syntax `header: z.string()` is NOT matched (no quote precedes
+		// the prefix token).
+		const GENERATOR = /["'`](?:header|intent|structure):/;
+		// PARSER_CALL: a method call on a string that checks for / splits on
+		// the legacy prefix.
+		const PARSER_CALL = /\.(?:startsWith|indexOf|lastIndexOf|includes|split)\s*\(\s*["'`](?:header|intent|structure):/;
+		// PARSER_REGEX: a regex literal that matches the prefix.
+		const PARSER_REGEX = /\/[gimsuy]*\^?\(?(?:header|intent|structure):[^/"'\s]*\/[gimsuy]*/;
+
+		for (const f of filesToScan) {
+			const rel = relative(process.cwd(), f).replace(/\\/g, "/");
+			let src: string;
+			try { src = readFileSync(f, "utf-8"); } catch { continue; }
+			const code = stripComments(src);
+			code.split("\n").forEach((line: string, i: number) => {
+				if (GENERATOR.test(line) || PARSER_CALL.test(line) || PARSER_REGEX.test(line)) {
+					offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+				}
+			});
+		}
+
+		expect(
+			offenders,
+			`legacy header:/intent:/structure: provenance generation or parsing residue (comments + Zod schema fields are NOT flagged):\n${offenders.join("\n")}`,
+		).toEqual([]);
 	});
 
 	// A: grep classification — the orchestrator's note lists 4 categories of allowed

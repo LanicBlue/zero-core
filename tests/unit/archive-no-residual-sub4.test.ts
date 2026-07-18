@@ -271,7 +271,7 @@ describe("[D4 #1, #2] cleanup-TTL safety-net behavior", () => {
 		const removed2 = reg.cleanup();
 		expect(removed2).toEqual([]);
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // D5 behavioral tests (#4-#10)
@@ -616,7 +616,7 @@ describe("[D5 #4-#10] sweepOrphanSessions behavior (real archive-service)", () =
 			warnSpy.mockRestore();
 		}
 	});
-});
+}, 30000);
 
 // ===========================================================================
 // Independent judgement: __recovered__ exclusion is correct (no real session
@@ -657,4 +657,4 @@ describe("[independent judgement] __recovered__ pseudo-agent exclusion", () => {
 			if (tmp) try { rmSync(tmp, { recursive: true, force: true }); } catch { /* EPERM */ }
 		}
 	});
-});
+}, 30000);
