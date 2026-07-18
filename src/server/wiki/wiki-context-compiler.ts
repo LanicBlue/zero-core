@@ -16,18 +16,17 @@
 // - project:// → active project semantic map (root summary)
 //
 // ### Agent Memory
-// - root summary 中的稳定规则
+// - root summary + 稳定规则(从 root content 截取)
 // - durability=permanent/long_term 的高价值记忆
 // - preference/procedure/experience 代表节点
-// - 最近更新 / 当前 work 相关
-// - 一级导航(必要二级候选)
+// - 最近更新 / 当前 work 相关(workContext boost)
+// - 一级导航(必要二级候选;deep profile bounded 2nd-level)
 //
 // ### Active Project
-// - 目标 / 技术栈 / branch / indexed revision / sync status
-// - 入口 / 主要模块
-// - 关键目录 summaries
-// - capabilities / constraints / risks / recent changes
-// - 当前 work 候选
+// - 目标 / 技术栈 / 入口 / 模块 / 风险 / 约束(缺省显式 (none recorded))
+// - Repo binding:branch / indexed_revision / sync_status / last_error / last_indexed_at
+// - 关键目录 summaries / 当前 work 候选
+// - deep profile:key-module 2nd-level candidates + recent changes
 //
 // ### Retrieval guidance
 // 先 search 定位,再 expand 了解结构,最后 read 正文或 source。
@@ -35,14 +34,25 @@
 //
 // ## 关键不变量(plan-05 §6 / acceptance-05 §C)
 //   - **preview 与 runtime 同函数**(字节级一致;禁止复制一套近似渲染)。
+//     compiler 需要的额外输入(repo binding)从注入的 wikiService 自取,caller
+//     无法分叉。workContext 是唯一故意 caller-difference(runtime 注入真实
+//     recent files/requirement;preview 注入 undefined 或 UI 提供)。
+//   - **profile 决定 selection depth**(不只 token budget):
+//       compact / standard / deep 各有不同的 filter + 2nd-level expand 行为。
 //   - **不依赖固定子树名**(如 preferences/lessons)—— 按 attributes.memory_type
 //     / durability / confidence 选,而不是路径段名。
-//   - **截断顺序固定**(plan-05 §6 表):
-//       地址/检索指引 → 根稳定规则 → permanent/long_term preference/procedure
-//       → Project 目标/约束/sync → 当前 work 相关 → 近期高价值 → 导航补充
-//   - **类内排序固定 tuple**:(priority DESC, durability rank, confidence DESC,
-//     updated_at DESC, canonical path ASC)。priority 是 attributes.priority
-//     (0-100,可选);durability rank: permanent > long_term > short_term。
+//   - **截断管道固定**(filter → boost → sort → truncate):
+//       1. filter:archived / 低置信假设(compact+standard) / profile durability / project compact-no-children
+//       2. boost:workContext 命中 → workHit 置顶
+//       3. sort:(workHit DESC, priority DESC, durability rank, confidence DESC,
+//              [memory-only] due demoted, updated_at DESC, path ASC)
+//       4. truncate:超预算停止,补 truncated marker
+//   - **revision 语义干净**:snapshot.maxRevision = max(visible nodes' revision
+//     integers) —— 绝不把 updated_at 时间戳当 revision 解析(defect #8 修复)。
+//     staleness 时间戳单独走 snapshot.maxUpdatedAt。
+//   - **stats 真实**:memoryNodesTotal / projectNodesTotal = 直接 children TRUE
+//     计数(via WikiService.countActiveChildren,authz-gated);*Dropped = total
+//     − included;truncated true iff included < total。
 //   - **超预算输出 truncated marker + 统计**(便于 UI preview 与 audit)。
 //   - **compiler 不在 AgentLoop**(plan-05 §6 + feedback-agent-loop-hooks-only)。
 //     AgentService 在 session build / hot-reload 时调用本 compiler,把结果包装
@@ -52,14 +62,20 @@
 //   - 不写 Wiki(authz 在 WikiService / Wiki tool);只读快照。
 //   - 不依赖短 ID / nodeId / 旧 anchor(全部 canonical path + 逻辑地址)。
 //   - 不为 0 节点 / 无 active project 时硬编码全树;空状态输出 empty marker。
+//   - 不发明 task_state(不存在);只处理 review_after(真实 attribute)。
 //
 // 参见:
 //   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §6
 //   - docs/plan/wiki-system-redesign/design.md §9.2
 
 import type { WikiService } from "./wiki-service.js";
-import type { CompiledWikiAccess } from "../../shared/wiki-types.js";
+import type {
+	CompiledWikiAccess,
+	WikiNodeAttributes,
+	WikiRequestContext,
+} from "../../shared/wiki-types.js";
 import type { WikiContextEntry } from "../../shared/types.js";
+import type { WikiRepositoryRow } from "./wiki-repository-store.js";
 import {
 	WIKI_ROOT_PATH,
 	normalizeWikiPath,
@@ -83,7 +99,7 @@ const PROFILE_BUDGETS: Record<WikiContextEntry["profile"], ProfileBudget> = {
 
 /**
  * Memory durability 排序 rank(永久 > 长期 > 短期 > 未标)。
- * 用于类内排序 tuple 的第 2 元素(permanent 最先)。
+ * 用于类内排序 tuple 的 durability 元素(permanent 最先)。
  */
 const DURABILITY_RANK: Record<string, number> = {
 	permanent: 0,
@@ -91,47 +107,143 @@ const DURABILITY_RANK: Record<string, number> = {
 	short_term: 2,
 };
 
+/**
+ * 低置信假设的 confidence 阈值(plan-05 §6 filter rule 2)。
+ * compact/standard profile 排除低于此值的 hypothesis-type 节点;deep profile
+ * 保留并加 "(low confidence)" marker。
+ */
+const LOW_CONFIDENCE_THRESHOLD = 0.4;
+
+/**
+ * 指示"假设/不确定"的 memory_type 闭集(小写)。confidence 低于阈值且
+ * memory_type 命中此集合 → 视为低置信假设(compact/standard 排除)。
+ * memory_type 未设置时,confidence 单独决定(defect #5 修复)。
+ */
+const HYPOTHESIS_MEMORY_TYPES = new Set([
+	"hypothesis",
+	"assumption",
+	"guess",
+	"tentative",
+	"uncertain",
+	"draft",
+	"speculation",
+	"conjecture",
+	"hypothetical",
+]);
+
+/** Root content "Stable rules" 段最大字符数(defect #4 修复)。 */
+const ROOT_CONTENT_BUDGET_CHARS = 800;
+
+/** Root summary 最大字符数。 */
+const ROOT_SUMMARY_BUDGET_CHARS = 600;
+
+/** Deep profile:top-N children 做 2nd-level expand(plan-05 §6 deep 行)。 */
+const DEEP_EXPAND_TOP_CHILDREN = 5;
+
+/** Deep profile:每个 top child expand 的 grandchild 第一页上限。 */
+const DEEP_EXPAND_GRANDCHILDREN_LIMIT = 10;
+
 // ---------------------------------------------------------------------------
 // 公共 API
 // ---------------------------------------------------------------------------
 
 /**
- * 编译输入。AgentService 在 session build / hot-reload 时构造。
+ * 编译输入。AgentService 在 session build / hot-reload 时构造;preview 走
+ * wiki-admin-router 同样构造。二者必须传一致形状(除 workContext 故意分叉)。
  */
 export interface CompileWikiContextOpts {
-	/** sub-02 WikiService —— 用于读 memory root / project root / children。 */
+	/** sub-02 WikiService —— 读 memory root / project root / children / repo binding / count。 */
 	readonly wikiService: WikiService;
 	/** Host 注入的编译后访问上下文(权威 grants 来源)。 */
 	readonly access: CompiledWikiAccess;
 	/** AgentRecord.wikiContext 条目(显式配置;未配则用默认 standard)。 */
 	readonly entries: WikiContextEntry[];
 	/**
-	 * 可选当前 work context 候选(AgentService 注入):活跃 requirement id /
-	 * recent file paths / task description。Project profile 用它筛"当前 work
-	 * 相关"节点。可省略(非 work session)。
+	 * 可选当前 work context(AgentService 注入):活跃 requirement id /
+	 * recent file paths / task description。命中路径/名/摘要的节点获 workHit
+	 * 排序置顶。可省略(preview / 非 work session)。
 	 */
 	readonly workContext?: {
 		requirementId?: string;
 		recentFiles?: string[];
 		taskDescription?: string;
 	};
+	/**
+	 * 可选"现在"用于 review_after due 判定(ISO ≤ now → due)。默认 new Date()。
+	 * 测试注入固定 Date 以保证确定性。生产路径默认即可,review_after 比较对
+	 * 毫秒级漂移不敏感(只要 ≤ now 即 due)。
+	 */
+	readonly now?: Date;
 }
 
+/** Profile 公共别名(compact/standard/deep)。 */
+type Profile = WikiContextEntry["profile"];
+
+/** WorkContext 私有别名(从 opts 派生,不暴露新公共类型)。 */
+type WorkContext = NonNullable<CompileWikiContextOpts["workContext"]>;
+
 /**
- * Memory / Project 子树节点快照(已读取 + 已按授权过滤)。
- *
- * 由 fetchSubtreeSnapshot 内部使用,compiler 不直接查 wiki.db。
+ * Memory / Project 子树节点快照(已读取;authz 已由 wikiService.expand/read 门外过滤)。
  */
 interface SubtreeNodeSnapshot {
 	path: string;
 	name: string;
 	summary: string;
+	/** 节点 revision(整数,来自 expand)。用于 snapshot.maxRevision。 */
+	revision: number;
+	/** ISO updated_at(来自 read summary;expand 不带 updated_at)。 */
 	updated_at: string;
 	memory_type?: string;
 	durability?: "permanent" | "long_term" | "short_term";
 	confidence?: number;
 	priority?: number;
+	/** ISO 复核时间;null = 未设。≤ now 视为 due。 */
+	review_after: string | null;
+	/** 直接 children 真实计数(via WikiService.countActiveChildren)。 */
 	childrenCount: number;
+}
+
+/**
+ * Root 快照(多带 content + 完整 attributes,用于 stable rules 渲染 + Project
+ * structured fields)。
+ */
+interface SubtreeRootSnapshot {
+	path: string;
+	summary: string;
+	content: string;
+	revision: number;
+	updated_at: string;
+	memory_type?: string;
+	durability?: "permanent" | "long_term" | "short_term";
+	confidence?: number;
+	priority?: number;
+	attributes: WikiNodeAttributes;
+}
+
+interface SubtreeSnapshot {
+	root: SubtreeRootSnapshot | null;
+	children: SubtreeNodeSnapshot[];
+	/** 直接 children 真实总数(via countActiveChildren;非首页长度)。 */
+	total: number;
+	/** max(visible nodes' revision) —— 整数,绝不混 updated_at。 */
+	maxRevision: number | null;
+	/** max(visible nodes' updated_at ISO) —— 独立 staleness 信号。 */
+	maxUpdatedAt: string | null;
+}
+
+/**
+ * 已 filter+boost 完毕的节点(渲染管线消费)。grandchildren 由 deep profile
+ * 的 attachDeepGrandchildren 填充。
+ */
+interface PreparedNode extends SubtreeNodeSnapshot {
+	/** workContext 命中 → 排序置顶(HIGHEST sort key,高于 priority)。 */
+	workHit: boolean;
+	/** review_after ISO ≤ now → 排序降级 + "(due for review)" marker。 */
+	due: boolean;
+	/** 低置信假设 → deep profile 渲染 "(low confidence)" marker。 */
+	lowConfidence: boolean;
+	/** Deep profile 2nd-level grandchildren(已 sort;空 = 未 attach / 无 child)。 */
+	grandchildren: PreparedNode[];
 }
 
 /**
@@ -157,23 +269,29 @@ export interface CompiledWikiContextSection {
 		memoryRevision: number | null;
 		projectRevision: number | null;
 		policyRevision: number;
+		/**
+		 * max updated_at ISO(across visible memory+project nodes)。独立的
+		 * staleness 信号 —— 与 revision 解耦(defect #8 修复)。
+		 */
+		maxUpdatedAt: string | null;
 	};
 }
 
 /**
  * 编译 Wiki Context system section。
  *
- * 幂等 + 确定性:同输入快照 → 同输出字节级一致(acceptance-05 §C)。
+ * 幂等 + 确定性:同输入快照(+ 同 `now`)→ 同输出字节级一致(acceptance-05 §C)。
  */
 export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<CompiledWikiContextSection> {
 	const { wikiService, access, workContext } = opts;
+	const now = opts.now ?? new Date();
 	const entries = opts.entries.length > 0 ? opts.entries : [];
 
 	// 决定每类 profile:取首条匹配的 entry 的 profile;无 entry → standard。
 	const memoryEntry = entries.find((e) => e.address.startsWith("memory://"));
 	const projectEntry = entries.find((e) => e.address.startsWith("project://")) ?? entries.find((e) => e.address === "project://");
-	const memoryProfile = memoryEntry?.profile ?? "standard";
-	const projectProfile = projectEntry?.profile ?? "standard";
+	const memoryProfile: Profile = memoryEntry?.profile ?? "standard";
+	const projectProfile: Profile = projectEntry?.profile ?? "standard";
 	const memoryBudget = memoryEntry?.budgetTokens ?? PROFILE_BUDGETS[memoryProfile].memory;
 	const projectBudget = projectEntry?.budgetTokens ?? PROFILE_BUDGETS[projectProfile].project;
 	const addressesBudget = PROFILE_BUDGETS[memoryProfile].addresses;
@@ -181,7 +299,7 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 	// 收集 available addresses(用于头部)。
 	const addressLines = collectAddressLines(entries, access, workContext);
 
-	// 解析 memory root canonical path(wiki-root/memory/<agentId>)。
+	// 解析 memory root / project root canonical path。
 	const memoryRootPath = `${WIKI_ROOT_PATH}/memory/${access.agentId}`;
 	const projectRootPath = access.activeProjectId
 		? `${WIKI_ROOT_PATH}/projects/${access.activeProjectId}`
@@ -191,17 +309,41 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 	const memorySnapshot = await fetchSubtreeSnapshot(wikiService, access, memoryRootPath);
 	const projectSnapshot = projectRootPath
 		? await fetchSubtreeSnapshot(wikiService, access, projectRootPath)
-		: { root: null, children: [], total: 0, maxRevision: null };
+		: { root: null, children: [], total: 0, maxRevision: null, maxUpdatedAt: null };
+
+	// 读 Project repo binding(branch / indexed_revision / sync_status / ...)。
+	// 在 compiler 内部从 wikiService 取 —— 保证 preview == runtime 字节级一致,
+	// caller 无法分叉(defect #9 修复)。
+	const projectBinding = projectRootPath && access.activeProjectId
+		? safeGetRepositoryBinding(wikiService, access.activeProjectId)
+		: undefined;
+
+	// 准备 children(filter → boost → sort)。Memory / Project 走不同 filter。
+	const memoryPrepared = memorySnapshot.root
+		? prepareMemoryChildren(memorySnapshot.children, memoryProfile, workContext, now)
+		: [];
+	const projectPrepared = projectSnapshot.root
+		? prepareProjectChildren(projectSnapshot.children, workContext, now)
+		: [];
+
+	// Deep profile:bounded 2nd-level expand of top-priority children。
+	// 在渲染前异步 attach grandchildren 到 PreparedNode 上(plan-05 §6 deep 行)。
+	if (memoryProfile === "deep" && memorySnapshot.root) {
+		await attachDeepGrandchildren(wikiService, access, memoryPrepared);
+	}
+	if (projectProfile === "deep" && projectSnapshot.root) {
+		await attachDeepGrandchildren(wikiService, access, projectPrepared);
+	}
 
 	// 渲染 + 截断。
-	const memoryRender = renderMemorySection(memorySnapshot, memoryProfile, memoryBudget, workContext);
+	const memoryRender = renderMemorySection(memorySnapshot, memoryPrepared, memoryBudget);
 	const projectRender = projectRootPath
-		? renderProjectSection(projectSnapshot, projectProfile, projectBudget, workContext)
+		? renderProjectSection(projectSnapshot, projectPrepared, projectProfile, projectBudget, projectBinding)
 		: renderEmptyProjectSection();
 	const addressesRender = renderAddressesSection(addressLines, addressesBudget);
 	const retrievalGuidance = renderRetrievalGuidance();
 
-	// 组装最终文本。截断顺序按 plan-05 §6 表(地址/检索 → 根规则 → …)。
+	// 组装最终文本。
 	const lines: string[] = [];
 	lines.push("## Wiki Context");
 	lines.push("");
@@ -220,6 +362,7 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 	lines.push(retrievalGuidance);
 
 	const text = lines.join("\n").trim();
+	const maxUpdatedAt = pickLaterIso(memorySnapshot.maxUpdatedAt, projectSnapshot.maxUpdatedAt);
 	return {
 		text,
 		stats: {
@@ -237,18 +380,19 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 			memoryRevision: memorySnapshot.maxRevision,
 			projectRevision: projectSnapshot.maxRevision,
 			policyRevision: access.policyRevision,
+			maxUpdatedAt,
 		},
 	};
 }
 
 // ---------------------------------------------------------------------------
-// 内部:地址段
+// 内部:地址段(unchanged 行为)
 // ---------------------------------------------------------------------------
 
 function collectAddressLines(
 	entries: WikiContextEntry[],
 	access: CompiledWikiAccess,
-	_workContext: CompileWikiContextOpts["workContext"],
+	_workContext: WorkContext | undefined,
 ): Array<{ address: string; hint: string }> {
 	const out: Array<{ address: string; hint: string }> = [];
 	const seen = new Set<string>();
@@ -312,84 +456,97 @@ function renderRetrievalGuidance(): string {
 // 内部:子树快照 fetch
 // ---------------------------------------------------------------------------
 
-interface SubtreeSnapshot {
-	root: {
-		path: string;
-		summary: string;
-		content: string;
-		revision: number;
-		updated_at: string;
-		memory_type?: string;
-		durability?: "permanent" | "long_term" | "short_term";
-		confidence?: number;
-		priority?: number;
-	} | null;
-	children: SubtreeNodeSnapshot[];
-	total: number;
-	maxRevision: number | null;
-}
-
 async function fetchSubtreeSnapshot(
 	wikiService: WikiService,
 	access: CompiledWikiAccess,
 	rootPath: string,
 ): Promise<SubtreeSnapshot> {
-	// WikiRequestContext 必须由调用方构造 —— 这里复用 access 编译最小 ctx。
-	// WikiService.expand/read 的授权检查会按 access.grants 决定可见性。
-	const ctx = {
-		access,
-		agentId: access.agentId,
-		activeProjectId: access.activeProjectId,
-		sessionId: null,
-		requestId: null,
-	};
+	const ctx = makeRequestContext(access);
 	try {
-		// 读 root。
+		// 读 root(content + attributes)。
 		const rootRead = await wikiService.read({
 			address: rootPath,
 			view: "all",
 		}, ctx);
 		const root = rootRead.node;
-		// 读 children(分页,第一页 50 个 —— 普通场景够用;deep profile 可扩)。
+		// 读 children(分页,第一页 100 个 —— 普通场景够用;deep profile 的
+		// 2nd-level 由 attachDeepGrandchildren 单独 expand)。
 		const expandResult = await wikiService.expand({
 			address: rootPath,
 			limit: 100,
 			cursor: null,
 			includeLinks: false,
 		}, ctx);
+
+		// TRUE 直接 children 总数(defect #7 修复):不再用首页长度冒充。
+		// countActiveChildren 与 expand 同样的 authz 门(resolveAddress +
+		// assertAgentAccess("expand"));授权失败抛 → 落回首页长度(defensive)。
+		let total = expandResult.children.items.length;
+		try {
+			total = wikiService.countActiveChildren(rootPath, ctx);
+		} catch {
+			// root 不可见 / 不存在 → 保持首页长度(此时通常也是 0)。
+		}
+
 		const children: SubtreeNodeSnapshot[] = await Promise.all(
-			expandResult.children.items.map(async (c) => {
-				// 单次 read 以拿 updated_at + attributes(memory_type / durability / ...)。
-				// 对大子树有 N+1 风险 —— 但 wiki-context 是缓存段,每 session 一次,
-				// 不是 hot path;后续可优化为 batched read。
+			expandResult.children.items.map(async (c): Promise<SubtreeNodeSnapshot> => {
+				// 单次 read 以拿 updated_at + attributes(memory_type / durability /
+				// confidence / priority / review_after)。N+1 风险但 wiki-context
+				// 是缓存段,每 session 一次,不是 hot path。
+				let updated_at = "";
+				let memory_type: string | undefined;
+				let durability: SubtreeNodeSnapshot["durability"];
+				let confidence: number | undefined;
+				let priority: number | undefined;
+				let review_after: string | null = null;
 				try {
 					const detail = await wikiService.read({
 						address: c.path, view: "summary",
 					}, ctx);
-					return {
-						path: c.path,
-						name: c.name,
-						summary: c.summary,
-						updated_at: detail.node.updatedAt,
-						memory_type: detail.node.attributes.memory_type,
-						durability: detail.node.attributes.durability,
-						confidence: detail.node.attributes.confidence,
-						priority: typeof detail.node.attributes.priority === "number"
-							? detail.node.attributes.priority
-							: undefined,
-						childrenCount: 0, // 单 read 不查孙;仅按一级 children 渲染
-					};
+					updated_at = detail.node.updatedAt;
+					memory_type = detail.node.attributes.memory_type;
+					durability = detail.node.attributes.durability;
+					confidence = detail.node.attributes.confidence;
+					priority = typeof detail.node.attributes.priority === "number"
+						? detail.node.attributes.priority
+						: undefined;
+					review_after = detail.node.attributes.review_after ?? null;
 				} catch {
-					return {
-						path: c.path, name: c.name, summary: c.summary,
-						updated_at: c.revision.toString(), // fallback
-						childrenCount: 0,
-					};
+					// read 失败(罕见;expand 通过 → read 通常也通过)→ 落回 expand 字段。
 				}
+				// 直接 children 真实计数(defect #3 修复:之前硬编码 0)。
+				let childrenCount = 0;
+				try {
+					childrenCount = wikiService.countActiveChildren(c.path, ctx);
+				} catch {
+					// 子节点不可见 → 0(不泄露)。
+				}
+				return {
+					path: c.path,
+					name: c.name,
+					summary: c.summary,
+					revision: c.revision,
+					updated_at,
+					memory_type,
+					durability,
+					confidence,
+					priority,
+					review_after,
+					childrenCount,
+				};
 			}),
 		);
-		const revs = [root.revision, ...children.map((c) => safeParseInt(c.updated_at))]
-			.filter((r): r is number => r !== null && Number.isFinite(r));
+
+		// maxRevision:整数 ONLY(defect #8 修复)。绝不解析 updated_at 当 revision。
+		const revisionInts = [root.revision, ...children.map((c) => c.revision)]
+			.filter((r): r is number => Number.isFinite(r));
+		const maxRevision = revisionInts.length > 0 ? Math.max(...revisionInts) : null;
+
+		// maxUpdatedAt:独立的 staleness 信号(NEVER 混进 revision)。
+		const updatedAts = [root.updatedAt, ...children.map((c) => c.updated_at)]
+			.filter((s): s is string => typeof s === "string" && s.length > 0);
+		const maxUpdatedAt = updatedAts.length > 0 ? updatedAts.reduce((a, b) => (a >= b ? a : b)) : null;
+
 		return {
 			root: {
 				path: root.path,
@@ -403,28 +560,280 @@ async function fetchSubtreeSnapshot(
 				priority: typeof root.attributes.priority === "number"
 					? root.attributes.priority
 					: undefined,
+				attributes: root.attributes,
 			},
 			children,
-			total: children.length,
-			maxRevision: revs.length > 0 ? Math.max(...revs) : null,
+			total,
+			maxRevision,
+			maxUpdatedAt,
 		};
 	} catch {
-		// root 不存在 / 无权限 → 空 snapshot(不抛)。
-		return { root: null, children: [], total: 0, maxRevision: null };
+		// root 不存在 / 无权限 → 空 snapshot(不抛;不泄露)。
+		return { root: null, children: [], total: 0, maxRevision: null, maxUpdatedAt: null };
 	}
 }
 
-function safeParseInt(s: string | undefined): number | null {
-	if (!s) return null;
-	// ISO timestamp → 取 ms;纯数字 → parseInt。
-	const n = Number(s);
-	if (Number.isFinite(n)) return n;
-	const ms = Date.parse(s);
-	return Number.isFinite(ms) ? ms : null;
+/**
+ * Deep profile 2nd-level expand(plan-05 §6 deep 行)。取已 sort 的 top-N
+ * children(且 childrenCount > 0),逐个 expand grandchildren 第一页,塞回
+ * PreparedNode.grandchildren 供渲染时缩进展示。
+ *
+ * 确定性:expand 排序键 path ASC + id ASC;Promise.all 保留输入顺序。
+ */
+async function attachDeepGrandchildren(
+	wikiService: WikiService,
+	access: CompiledWikiAccess,
+	prepared: PreparedNode[],
+): Promise<void> {
+	const candidates = prepared
+		.slice(0, DEEP_EXPAND_TOP_CHILDREN)
+		.filter((n) => n.childrenCount > 0);
+	if (candidates.length === 0) return;
+	const ctx = makeRequestContext(access);
+	await Promise.all(candidates.map(async (node) => {
+		try {
+			const expandResult = await wikiService.expand({
+				address: node.path,
+				limit: DEEP_EXPAND_GRANDCHILDREN_LIMIT,
+				cursor: null,
+				includeLinks: false,
+			}, ctx);
+			node.grandchildren = expandResult.children.items.map((c): PreparedNode => ({
+				path: c.path,
+				name: c.name,
+				summary: c.summary,
+				revision: c.revision,
+				updated_at: "",
+				review_after: null,
+				childrenCount: 0,
+				workHit: false,
+				due: false,
+				lowConfidence: false,
+				grandchildren: [],
+			}));
+		} catch {
+			node.grandchildren = [];
+		}
+	}));
+}
+
+function makeRequestContext(access: CompiledWikiAccess): WikiRequestContext {
+	return {
+		access,
+		agentId: access.agentId,
+		activeProjectId: access.activeProjectId,
+		sessionId: null,
+		requestId: null,
+	};
+}
+
+function safeGetRepositoryBinding(wikiService: WikiService, projectId: string): WikiRepositoryRow | undefined {
+	try {
+		return wikiService.getRepositoryBinding(projectId);
+	} catch {
+		return undefined;
+	}
 }
 
 // ---------------------------------------------------------------------------
-// 内部:Memory section 渲染(standard profile)
+// 内部:filter → boost → sort pipeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Memory children 准备:filter(profile durability + 低置信假设)→ boost(workHit
+ * / due / lowConfidence)→ sort。返回新数组(不修改输入)。
+ */
+function prepareMemoryChildren(
+	children: SubtreeNodeSnapshot[],
+	profile: Profile,
+	workContext: WorkContext | undefined,
+	now: Date,
+): PreparedNode[] {
+	const matchers = compileWorkMatchers(workContext);
+	// Step 1 — filter:
+	//   - 低置信假设:compact/standard 排除;deep 保留(渲染时加 marker)。
+	//   - profile durability:compact=permanent only;standard/deep=permanent +
+	//     long_term + undefined-durability(充当一级导航)。
+	const filtered = children.filter((c) => {
+		if (isLowConfidenceHypothesis(c) && profile !== "deep") return false;
+		if (profile === "compact") return c.durability === "permanent";
+		// standard + deep:explicit high-value tiers PLUS undefined-durability
+		// nodes, which serve as first-level navigation for memory trees built
+		// without disciplined durability tagging (the common case). Ranking
+		// still favors explicit tiers via DURABILITY_RANK (unknown sorts last,
+		// rank 3), so permanent / long_term surface first within budget;
+		// undefined-durability nodes fill in as navigation when budget remains.
+		// short_term stays excluded — it is the explicit "ephemeral" tier and
+		// must stay out of the prompt.
+		return c.durability === "permanent" || c.durability === "long_term" || c.durability === undefined;
+	});
+	// Step 2 + 3 — boost + sort。
+	const prepared = filtered.map((c): PreparedNode => ({
+		...c,
+		workHit: matchesWork(c, matchers),
+		due: isDueForReview(c.review_after, now),
+		lowConfidence: isLowConfidenceHypothesis(c),
+		grandchildren: [],
+	}));
+	prepared.sort(compareMemoryPrepared);
+	return prepared;
+}
+
+/**
+ * Project children 准备:无 durability/低置信过滤(Project 节点无 memory 语义);
+ * 仅 boost(workHit / due / lowConfidence)→ sort。compact profile 不渲染任何
+ * 子节点(renderProjectSection 直接跳过 prepared)。
+ */
+function prepareProjectChildren(
+	children: SubtreeNodeSnapshot[],
+	workContext: WorkContext | undefined,
+	now: Date,
+): PreparedNode[] {
+	const matchers = compileWorkMatchers(workContext);
+	const prepared = children.map((c): PreparedNode => ({
+		...c,
+		workHit: matchesWork(c, matchers),
+		due: isDueForReview(c.review_after, now),
+		lowConfidence: isLowConfidenceHypothesis(c),
+		grandchildren: [],
+	}));
+	prepared.sort(compareProjectPrepared);
+	return prepared;
+}
+
+// ---------------------------------------------------------------------------
+// 内部:workContext boost
+// ---------------------------------------------------------------------------
+
+interface WorkMatchers {
+	/** recentFiles basename(去扩展名,小写,长度 ≥ 3)。 */
+	fileBasenames: string[];
+	/** requirementId + taskDescription 提取的关键 token(小写,长度 ≥ 3)。 */
+	keywords: string[];
+}
+
+/**
+ * 把 workContext 编译为稳定 matcher 集合。空 workContext → 空 matchers →
+ * 任何节点都不会 workHit(等价于关闭 boost,保持原 sort)。
+ */
+function compileWorkMatchers(workContext: WorkContext | undefined): WorkMatchers {
+	if (!workContext) return { fileBasenames: [], keywords: [] };
+	const fileBasenames: string[] = [];
+	if (workContext.recentFiles) {
+		for (const f of workContext.recentFiles) {
+			if (typeof f !== "string" || f.length === 0) continue;
+			const base = f.split(/[\\/]/).pop() ?? f;
+			const noExt = base.replace(/\.[^.]+$/, "");
+			if (noExt.length >= 3) fileBasenames.push(noExt.toLowerCase());
+		}
+	}
+	const keywords: string[] = [];
+	const sourceText = [workContext.requirementId, workContext.taskDescription]
+		.filter((s): s is string => typeof s === "string" && s.length > 0)
+		.join(" ");
+	if (sourceText.length > 0) {
+		const tokens = sourceText
+			.toLowerCase()
+			.split(/[^a-z0-9_-]+/i)
+			.filter((t) => t.length >= 3);
+		keywords.push(...tokens);
+	}
+	return { fileBasenames, keywords };
+}
+
+/**
+ * 节点是否命中 workContext:检查 path / name / summary 是否包含任一 basename
+ * 或 keyword(子串、小写比较)。
+ */
+function matchesWork(node: SubtreeNodeSnapshot, matchers: WorkMatchers): boolean {
+	if (matchers.fileBasenames.length === 0 && matchers.keywords.length === 0) return false;
+	const haystack = `${node.path || ""} ${node.name || ""} ${node.summary || ""}`.toLowerCase();
+	for (const b of matchers.fileBasenames) {
+		if (b && haystack.includes(b)) return true;
+	}
+	for (const k of matchers.keywords) {
+		if (k && haystack.includes(k)) return true;
+	}
+	return false;
+}
+
+// ---------------------------------------------------------------------------
+// 内部:filter rules
+// ---------------------------------------------------------------------------
+
+/**
+ * 低置信假设判定(defect #5 修复)。
+ *   - confidence >= 阈值 → false
+ *   - confidence < 阈值 AND memory_type absent/empty → true(use confidence alone)
+ *   - confidence < 阈值 AND memory_type present → true 仅当 memory_type 命中
+ *     HYPOTHESIS_MEMORY_TYPES(非假设型节点即便低置信也保留,如 preference/procedure)。
+ */
+function isLowConfidenceHypothesis(node: SubtreeNodeSnapshot): boolean {
+	const conf = typeof node.confidence === "number" ? node.confidence : 1;
+	if (conf >= LOW_CONFIDENCE_THRESHOLD) return false;
+	const mt = node.memory_type;
+	if (mt === undefined || mt === null || mt === "") return true;
+	return HYPOTHESIS_MEMORY_TYPES.has(mt.toLowerCase());
+}
+
+/**
+ * review_after due 判定(defect #6 修复)。ISO ≤ now → due。无效 ISO → 非 due。
+ */
+function isDueForReview(reviewAfter: string | null, now: Date): boolean {
+	if (!reviewAfter) return false;
+	const t = Date.parse(reviewAfter);
+	if (!Number.isFinite(t)) return false;
+	return t <= now.getTime();
+}
+
+// ---------------------------------------------------------------------------
+// 内部:sort comparators
+// ---------------------------------------------------------------------------
+
+/**
+ * Memory 类内稳定 tuple sort:
+ *   workHit DESC > priority DESC > durability rank ASC(permanent 先) >
+ *   confidence DESC > due ASC(false 先,due 降级) > updated_at DESC > path ASC。
+ */
+function compareMemoryPrepared(a: PreparedNode, b: PreparedNode): number {
+	if (a.workHit !== b.workHit) return a.workHit ? -1 : 1;
+	const pa = typeof a.priority === "number" ? a.priority : 0;
+	const pb = typeof b.priority === "number" ? b.priority : 0;
+	if (pa !== pb) return pb - pa;
+	const da = DURABILITY_RANK[a.durability ?? ""] ?? 3;
+	const db = DURABILITY_RANK[b.durability ?? ""] ?? 3;
+	if (da !== db) return da - db;
+	const ca = typeof a.confidence === "number" ? a.confidence : 0;
+	const cb = typeof b.confidence === "number" ? b.confidence : 0;
+	if (ca !== cb) return cb - ca;
+	if (a.due !== b.due) return a.due ? 1 : -1;
+	const ua = parseTimeMs(a.updated_at);
+	const ub = parseTimeMs(b.updated_at);
+	if (ua !== ub) return ub - ua;
+	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
+/**
+ * Project 类内稳定 tuple sort(无 durability):
+ *   workHit DESC > priority DESC > confidence DESC > due ASC > updated_at DESC > path ASC。
+ */
+function compareProjectPrepared(a: PreparedNode, b: PreparedNode): number {
+	if (a.workHit !== b.workHit) return a.workHit ? -1 : 1;
+	const pa = typeof a.priority === "number" ? a.priority : 0;
+	const pb = typeof b.priority === "number" ? b.priority : 0;
+	if (pa !== pb) return pb - pa;
+	const ca = typeof a.confidence === "number" ? a.confidence : 0;
+	const cb = typeof b.confidence === "number" ? b.confidence : 0;
+	if (ca !== cb) return cb - ca;
+	if (a.due !== b.due) return a.due ? 1 : -1;
+	const ua = parseTimeMs(a.updated_at);
+	const ub = parseTimeMs(b.updated_at);
+	if (ua !== ub) return ub - ua;
+	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------
+// 内部:Memory section 渲染
 // ---------------------------------------------------------------------------
 
 interface SectionRenderResult {
@@ -436,30 +845,31 @@ interface SectionRenderResult {
 
 function renderMemorySection(
 	snapshot: SubtreeSnapshot,
-	_profile: WikiContextEntry["profile"],
+	prepared: PreparedNode[],
 	budgetTokens: number,
-	_workContext: CompileWikiContextOpts["workContext"],
 ): SectionRenderResult {
 	if (!snapshot.root) {
 		return { text: "", included: 0, tokensUsed: 0, truncated: false };
 	}
 
-	// 类内排序:priority DESC > durability rank ASC > confidence DESC > updated_at DESC > path ASC
-	const sorted = [...snapshot.children].sort(compareMemoryNodes);
-	const headerLines = [
+	const out: string[] = [
 		"### Agent Memory",
 		`Root: \`${snapshot.root.path}\``,
 	];
 	if (snapshot.root.summary) {
-		headerLines.push(`Summary: ${truncate(snapshot.root.summary, 600)}`);
+		out.push(`Summary: ${truncate(snapshot.root.summary, ROOT_SUMMARY_BUDGET_CHARS)}`);
 	}
-	const headerText = headerLines.join("\n");
-	let used = estimateTokens(headerText);
-	const out: string[] = [headerText];
+	// defect #4 修复:root content 的稳定规则实际进 prompt(之前只读 .summary)。
+	const rootRules = renderRootContentRules(snapshot.root.content);
+	if (rootRules) {
+		out.push(rootRules);
+	}
+
+	let used = estimateTokens(out.join("\n"));
 	let included = 0;
 	let truncated = false;
 
-	for (const node of sorted) {
+	for (const node of prepared) {
 		const line = formatMemoryNodeLine(node);
 		const tokens = estimateTokens(line);
 		if (used + tokens > budgetTokens) {
@@ -478,34 +888,33 @@ function renderMemorySection(
 	return { text: out.join("\n"), included, tokensUsed: used, truncated };
 }
 
-function formatMemoryNodeLine(node: SubtreeNodeSnapshot): string {
+/**
+ * 把 root content 渲染为 "Stable rules:" 段(截断到 ROOT_CONTENT_BUDGET_CHARS)。
+ * 空内容 → 空字符串(不渲染该段)。
+ */
+function renderRootContentRules(content: string): string {
+	if (!content || !content.trim()) return "";
+	return `Stable rules:\n${truncate(content, ROOT_CONTENT_BUDGET_CHARS)}`;
+}
+
+function formatMemoryNodeLine(node: PreparedNode): string {
 	const tags: string[] = [];
 	if (node.durability) tags.push(node.durability);
 	if (node.memory_type) tags.push(node.memory_type);
 	const tagStr = tags.length > 0 ? ` [${tags.join(", ")}]` : "";
+	const markers: string[] = [];
+	if (node.lowConfidence) markers.push("low confidence");
+	if (node.due) markers.push("due for review");
+	const markerStr = markers.length > 0 ? ` (${markers.join("; ")})` : "";
 	const summary = node.summary ? ` — ${truncate(node.summary, 200)}` : "";
-	return `- \`${node.path}\`${tagStr}${summary}`;
-}
-
-function compareMemoryNodes(a: SubtreeNodeSnapshot, b: SubtreeNodeSnapshot): number {
-	// priority DESC(higher first)
-	const pa = typeof a.priority === "number" ? a.priority : 0;
-	const pb = typeof b.priority === "number" ? b.priority : 0;
-	if (pa !== pb) return pb - pa;
-	// durability: permanent(0) > long_term(1) > short_term(2) > unknown(3)
-	const da = DURABILITY_RANK[a.durability ?? ""] ?? 3;
-	const db = DURABILITY_RANK[b.durability ?? ""] ?? 3;
-	if (da !== db) return da - db;
-	// confidence DESC
-	const ca = typeof a.confidence === "number" ? a.confidence : 0;
-	const cb = typeof b.confidence === "number" ? b.confidence : 0;
-	if (ca !== cb) return cb - ca;
-	// updated_at DESC
-	const ua = safeParseInt(a.updated_at) ?? 0;
-	const ub = safeParseInt(b.updated_at) ?? 0;
-	if (ua !== ub) return ub - ua;
-	// canonical path ASC
-	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+	const lines = [`- \`${node.path}\`${tagStr}${markerStr}${summary}`];
+	if (node.grandchildren.length > 0) {
+		for (const gc of node.grandchildren) {
+			const gcSummary = gc.summary ? ` — ${truncate(gc.summary, 120)}` : "";
+			lines.push(`  - \`${gc.path}\`${gcSummary}`);
+		}
+	}
+	return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -514,38 +923,52 @@ function compareMemoryNodes(a: SubtreeNodeSnapshot, b: SubtreeNodeSnapshot): num
 
 function renderProjectSection(
 	snapshot: SubtreeSnapshot,
-	_profile: WikiContextEntry["profile"],
+	prepared: PreparedNode[],
+	profile: Profile,
 	budgetTokens: number,
-	_workContext: CompileWikiContextOpts["workContext"],
+	binding: WikiRepositoryRow | undefined,
 ): SectionRenderResult {
 	if (!snapshot.root) {
 		return renderEmptyProjectSection();
 	}
 
-	const headerLines = [
+	const out: string[] = [
 		"### Active Project",
 		`Root: \`${snapshot.root.path}\``,
 	];
 	if (snapshot.root.summary) {
-		headerLines.push(`Summary: ${truncate(snapshot.root.summary, 800)}`);
+		out.push(`Summary: ${truncate(snapshot.root.summary, 800)}`);
 	}
-	const headerText = headerLines.join("\n");
-	let used = estimateTokens(headerText);
-	const out: string[] = [headerText];
+
+	// defect #9 修复:渲染 root 结构化字段(goals/stack/entrypoints/modules/risks/
+	// constraints),缺省 → 显式 "(none recorded)"。
+	for (const line of renderProjectStructuredFields(snapshot.root.attributes, profile)) {
+		out.push(line);
+	}
+
+	// defect #9 修复:渲染 repo binding(branch / indexed_revision / sync_status /
+	// last_error / last_indexed_at),缺省 → 显式 empty state。
+	for (const line of renderRepoBinding(binding)) {
+		out.push(line);
+	}
+
+	let used = estimateTokens(out.join("\n"));
 	let included = 0;
 	let truncated = false;
 
-	const sorted = [...snapshot.children].sort(compareProjectNodes);
-	for (const node of sorted) {
-		const line = formatProjectNodeLine(node);
-		const tokens = estimateTokens(line);
-		if (used + tokens > budgetTokens) {
-			truncated = true;
-			break;
+	// compact profile 不渲染 children(plan-05 §6 matrix:仅 root attrs + binding)。
+	if (profile !== "compact") {
+		for (const node of prepared) {
+			const line = formatProjectNodeLine(node);
+			const tokens = estimateTokens(line);
+			if (used + tokens > budgetTokens) {
+				truncated = true;
+				break;
+			}
+			out.push(line);
+			used += tokens;
+			included++;
 		}
-		out.push(line);
-		used += tokens;
-		included++;
 	}
 
 	if (snapshot.total > included) {
@@ -564,25 +987,78 @@ function renderEmptyProjectSection(): SectionRenderResult {
 	};
 }
 
-function formatProjectNodeLine(node: SubtreeNodeSnapshot): string {
-	const summary = node.summary ? ` — ${truncate(node.summary, 200)}` : "";
-	const childMarker = node.childrenCount > 0 ? ` ▾${node.childrenCount}` : " leaf";
-	return `- \`${node.path}\`${childMarker}${summary}`;
+/**
+ * 渲染 Project root 的结构化字段。compact profile 只渲染 Goals + Entrypoints;
+ * standard/deep 渲染全部 6 个字段。每个字段缺省 → 显式 "(none recorded)"
+ * (defect #9 修复:不静默省略)。
+ */
+function renderProjectStructuredFields(attrs: WikiNodeAttributes, profile: Profile): string[] {
+	const fieldsCompact: Array<[string, string]> = [
+		["Goals", "goals"],
+		["Entrypoints", "entrypoints"],
+	];
+	const fieldsStandard: Array<[string, string]> = [
+		["Goals", "goals"],
+		["Stack", "stack"],
+		["Entrypoints", "entrypoints"],
+		["Modules", "modules"],
+		["Risks", "risks"],
+		["Constraints", "constraints"],
+	];
+	const fields = profile === "compact" ? fieldsCompact : fieldsStandard;
+	return fields.map(([label, key]) => `- ${label}: ${formatFieldValue(attrs[key])}`);
 }
 
-function compareProjectNodes(a: SubtreeNodeSnapshot, b: SubtreeNodeSnapshot): number {
-	// Project 类内排序:priority DESC > confidence DESC > updated_at DESC > path ASC
-	// (无 durability —— durability 是 Memory 概念)
-	const pa = typeof a.priority === "number" ? a.priority : 0;
-	const pb = typeof b.priority === "number" ? b.priority : 0;
-	if (pa !== pb) return pb - pa;
-	const ca = typeof a.confidence === "number" ? a.confidence : 0;
-	const cb = typeof b.confidence === "number" ? b.confidence : 0;
-	if (ca !== cb) return cb - ca;
-	const ua = safeParseInt(a.updated_at) ?? 0;
-	const ub = safeParseInt(b.updated_at) ?? 0;
-	if (ua !== ub) return ub - ua;
-	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+/**
+ * 把任意 attributes 字段值格式化为单行字符串。null/undefined/空 → "(none recorded)"。
+ */
+function formatFieldValue(v: unknown): string {
+	if (v === undefined || v === null) return "(none recorded)";
+	if (typeof v === "string") return v.length === 0 ? "(none recorded)" : v;
+	if (typeof v === "number" || typeof v === "boolean") return String(v);
+	if (Array.isArray(v)) {
+		if (v.length === 0) return "(none recorded)";
+		return v
+			.map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
+			.join(", ");
+	}
+	if (typeof v === "object") return JSON.stringify(v);
+	return "(none recorded)";
+}
+
+/**
+ * 渲染 repo binding status。无 binding → 显式 empty state。
+ */
+function renderRepoBinding(binding: WikiRepositoryRow | undefined): string[] {
+	if (!binding) {
+		return ["Repo binding: (none — project not bound to a Git repository)"];
+	}
+	const branch = binding.default_branch || "(unset)";
+	const indexedRev = binding.indexed_revision ?? "(none)";
+	const syncStatus = binding.sync_status || "(unknown)";
+	const lastError = binding.last_error ?? "(none)";
+	const lastIndexed = binding.last_indexed_at ?? "(never)";
+	return [
+		`Repo binding: branch=${branch}, indexed_revision=${indexedRev}, sync_status=${syncStatus}`,
+		`  last_error=${lastError}, last_indexed_at=${lastIndexed}`,
+	];
+}
+
+function formatProjectNodeLine(node: PreparedNode): string {
+	const childMarker = node.childrenCount > 0 ? ` ▾${node.childrenCount}` : " leaf";
+	const markers: string[] = [];
+	if (node.lowConfidence) markers.push("low confidence");
+	if (node.due) markers.push("due for review");
+	const markerStr = markers.length > 0 ? ` (${markers.join("; ")})` : "";
+	const summary = node.summary ? ` — ${truncate(node.summary, 200)}` : "";
+	const lines = [`- \`${node.path}\`${childMarker}${markerStr}${summary}`];
+	if (node.grandchildren.length > 0) {
+		for (const gc of node.grandchildren) {
+			const gcSummary = gc.summary ? ` — ${truncate(gc.summary, 120)}` : "";
+			lines.push(`  - \`${gc.path}\`${gcSummary}`);
+		}
+	}
+	return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +1076,20 @@ function truncate(s: string, maxChars: number): string {
 	if (!s) return "";
 	if (s.length <= maxChars) return s;
 	return s.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "…";
+}
+
+/** ISO/数字字符串 → ms 数(用于 updated_at 比较)。无效/空 → 0。 */
+function parseTimeMs(s: string | undefined): number {
+	if (!s) return 0;
+	const t = Date.parse(s);
+	return Number.isFinite(t) ? t : 0;
+}
+
+/** 取两个 ISO 字符串(或 null)中较晚的一个;两个都 null → null。 */
+function pickLaterIso(a: string | null, b: string | null): string | null {
+	if (a === null) return b;
+	if (b === null) return a;
+	return a >= b ? a : b;
 }
 
 /** 重新导出 normalizeWikiPath 便于 AgentService 在 publish 时校验路径。 */

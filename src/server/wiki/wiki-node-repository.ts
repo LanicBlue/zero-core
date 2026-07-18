@@ -158,6 +158,25 @@ export class WikiNodeRepository {
 	}
 
 	/**
+	 * 按 parent_id 数 active 直接 children(plan-05 §6 wiki-context-compiler 需要
+	 * TRUE 直接子节点总数 —— 之前用 expand 第一页长度冒充,stats dropped 计算错)。
+	 *
+	 * 单条 `SELECT COUNT(*)` —— 不读正文/attributes,廉价。归档节点不计入。
+	 * 不开 transaction(纯读)。授权由 service 层 {@link WikiService.countActiveChildren}
+	 * 在调用前 mirror expand 的 grant 检查后调用本 primitive。
+	 */
+	countActiveChildren(parentId: number): number {
+		const row = this.db
+			.prepare(
+				`SELECT COUNT(*) AS n
+				 FROM wiki_nodes
+				 WHERE parent_id = ? AND archived_at IS NULL`,
+			)
+			.get(parentId) as { n: number } | undefined;
+		return row?.n ?? 0;
+	}
+
+	/**
 	 * 按 parent_id 分页查 active 直接 children。
 	 *
 	 * 排序键:path ASC + id ASC(稳定)。cursor 用上一页最后一行的 `{path, id}`。

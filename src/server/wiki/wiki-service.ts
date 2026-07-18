@@ -72,6 +72,7 @@ import { WikiAuditRepository, type WikiAuditRow } from "./wiki-audit-repository.
 import {
 	WikiRepositoryStore,
 	type WikiAddressRow,
+	type WikiRepositoryRow,
 } from "./wiki-repository-store.js";
 import {
 	WikiAddressService,
@@ -259,6 +260,40 @@ export class WikiService {
 			},
 			auditId,
 		};
+	}
+
+	/**
+	 * 数某节点的 active 直接 children 总数(plan-05 §6 wiki-context-compiler
+	 * 需要 TRUE 直接子节点总数,stats `*NodesTotal` / `*Dropped` 才能真)。
+	 *
+	 * **授权纪律(与 expand 同模型)**:先解析地址 → assertAgentAccess("expand")
+	 * → 再查节点 → 调 repo.countActiveChildren。失败外观与 expand 一致
+	 * (无 grant → NOT_FOUND;scope 但无 action → ACCESS_DENIED)。
+	 *
+	 * **不写 audit**(read-only counting;与 expand 不同,expand 是 Agent 显式
+	 * action 需 receipt,counting 是 compiler 内部副查询,写 audit 会污染历史)。
+	 *
+	 * 节点不存在 / 不可见 → 返回 0(与 NOT_FOUND 同外观,不泄露存在性)。
+	 */
+	countActiveChildren(address: string, ctx: WikiRequestContext): number {
+		const canonicalPath = this.resolveAddress(address, ctx);
+		this.assertAgentAccess("expand", canonicalPath, ctx);
+		const node = this.deps.nodeRepo.getActiveByPath(canonicalPath);
+		if (!node) return 0;
+		return this.deps.nodeRepo.countActiveChildren(node.id);
+	}
+
+	/**
+	 * 读 project 仓库绑定(branch / indexed_revision / sync_status / last_error /
+	 * last_indexed_at)。plan-05 §6 wiki-context-compiler 在 Project 段渲染 binding
+	 * status —— 通过 service 读取(而不是 caller 直接持 repositoryStore)以保持
+	 * preview == runtime:runtime(AgentService)与 preview(wiki-admin-router)
+	 * 都注入同一个 WikiService,二者调用本 accessor 得到字节级一致输出。
+	 *
+	 * 未绑定 → undefined(compiler 渲染 "(none)" empty state)。
+	 */
+	getRepositoryBinding(projectId: string): WikiRepositoryRow | undefined {
+		return this.deps.repositoryStore.repositories.getByProjectId(projectId);
 	}
 
 	// =========================================================================
