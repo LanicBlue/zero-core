@@ -52,6 +52,16 @@ export interface WikiMaintenanceRouterDeps {
 	coreDb: CoreDatabase;
 	wikiDb?: WikiDatabase;
 	keepRecent?: number;
+	/**
+	 * P1-4: DB + 备份目录路径注入(透传给 BackupService)。生产 composition
+	 * root(server/index.ts)应通过 DatabaseManager 的 path getter 注入,让
+	 * DatabaseManager 作为路径权威;不传时 BackupService fallback 到
+	 * database-paths 常量(保留 back-compat)。
+	 */
+	coreDbPath?: string;
+	wikiDbPath?: string;
+	coreBackupDir?: string;
+	wikiBackupDir?: string;
 }
 
 export function createWikiMaintenanceRouter(deps: WikiMaintenanceRouterDeps): Router {
@@ -60,6 +70,10 @@ export function createWikiMaintenanceRouter(deps: WikiMaintenanceRouterDeps): Ro
 		coreDb: deps.coreDb,
 		wikiDb: deps.wikiDb,
 		keepRecent: deps.keepRecent,
+		coreDbPath: deps.coreDbPath,
+		wikiDbPath: deps.wikiDbPath,
+		coreBackupDir: deps.coreBackupDir,
+		wikiBackupDir: deps.wikiBackupDir,
 	});
 
 	// ─── §3 Backup ─────────────────────────────────────────────────

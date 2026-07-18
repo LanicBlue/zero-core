@@ -947,9 +947,15 @@ export async function startServer(options?: StartServerOptions) {
 	// 暴露在 /api/wiki-maintain(独立 path,不走 Agent shell;authority 同
 	// /api/wiki-admin 由 server host 注入)。wikiDb 句柄可选(headless/无
 	// wiki subsystem 时 backup/integrity 路由会返 400 而非崩溃)。
+	// P1-4: DB + 备份目录路径通过 DatabaseManager 的 path getter 注入,
+	// 让 DatabaseManager 作为路径权威(BackupService 不再自行重导常量)。
 	app.use("/api/wiki-maintain", createWikiMaintenanceRouter({
 		coreDb: sessionDB,
 		wikiDb: wikiDbHandle,
+		coreDbPath: dbManager.getCoreDbPath(),
+		wikiDbPath: dbManager.getWikiDbPath(),
+		coreBackupDir: dbManager.getCoreBackupDir(),
+		wikiBackupDir: dbManager.getWikiBackupDir(),
 	}));
 
 	// v0.8 (M2): archivist endpoints — scan / rescan / divergence / git ops.

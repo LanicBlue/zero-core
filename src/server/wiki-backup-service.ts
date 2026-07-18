@@ -109,21 +109,47 @@ export interface VerifyResult {
  *
  * Wiki 句柄可选 —— headless/CLI 路径可能不起 wiki subsystem,这时只能 backup
  * core.db(wiki.db 文件可能也不存在,跳过 wiki snapshot)。
+ *
+ * P1-4: DB + 备份目录路径现在通过 deps 注入(默认 fallback 到
+ * `database-paths.ts` 常量,保持 back-compat)。生产 composition root
+ * (`server/index.ts`)应通过 `DatabaseManager.getCoreDbPath()` 等 getter
+ * 把路径注入进来 —— 让 DatabaseManager 成为路径权威,BackupService 不再
+ * 自行重导常量。机制(SQLite Backup API + 只读连接)不变。
  */
 export interface BackupServiceDeps {
 	coreDb: CoreDatabase;
 	wikiDb?: WikiDatabase;
 	/** 保留最近 N 个 snapshot(默认 20)。超出按时间最旧删。 */
 	keepRecent?: number;
+	/** Source core.db 路径(默认 database-paths.coreDbPath)。 */
+	coreDbPath?: string;
+	/** Source wiki.db 路径(默认 database-paths.wikiDbPath)。 */
+	wikiDbPath?: string;
+	/** Core 备份目录(默认 database-paths.coreBackupDir)。 */
+	coreBackupDir?: string;
+	/** Wiki 备份目录(默认 database-paths.wikiBackupDir)。 */
+	wikiBackupDir?: string;
 }
 
 export class BackupService {
 	private readonly deps: BackupServiceDeps;
 	private readonly keepRecent: number;
+	private readonly coreDbPath: string;
+	private readonly wikiDbPath: string;
+	private readonly coreBackupDir: string;
+	private readonly wikiBackupDir: string;
 
 	constructor(deps: BackupServiceDeps) {
 		this.deps = deps;
 		this.keepRecent = deps.keepRecent ?? 20;
+		// P1-4: paths are injectable; defaults come from database-paths.ts so
+		// existing callers that don't pass them keep working. Production
+		// (server/index.ts) passes DatabaseManager's getter output so a single
+		// owner hands these out.
+		this.coreDbPath = deps.coreDbPath ?? coreDbPath;
+		this.wikiDbPath = deps.wikiDbPath ?? wikiDbPath;
+		this.coreBackupDir = deps.coreBackupDir ?? coreBackupDir;
+		this.wikiBackupDir = deps.wikiBackupDir ?? wikiBackupDir;
 	}
 
 	// ─── Snapshot API ───────────────────────────────────────────────
@@ -162,14 +188,14 @@ export class BackupService {
 	 * 用 SQLite Backup API(在线页级一致;不 checkpoint 源)。
 	 */
 	async snapshotCore(note?: string): Promise<SnapshotManifest> {
-		return this.snapshotOne("core", coreDbPath, coreBackupDir, note);
+		return this.snapshotOne("core", this.coreDbPath, this.coreBackupDir, note);
 	}
 
 	/**
 	 * Wiki.db snapshot。同上,target = `${wikiBackupDir}/wiki-${ISO}.db`。
 	 */
 	async snapshotWiki(note?: string): Promise<SnapshotManifest> {
-		return this.snapshotOne("wiki", wikiDbPath, wikiBackupDir, note);
+		return this.snapshotOne("wiki", this.wikiDbPath, this.wikiBackupDir, note);
 	}
 
 	/**
@@ -314,7 +340,8 @@ export class BackupService {
 	listSnapshots(): SnapshotManifest[] {
 		const out: SnapshotManifest[] = [];
 		for (const kind of ["core", "wiki"] as const) {
-			const dir = kind === "core" ? coreBackupDir : wikiBackupDir;
+			const dir = kind === "core" ? this.coreBackupDir : this.wikiBackupDir;
+			const sourcePath = kind === "core" ? this.coreDbPath : this.wikiDbPath;
 			if (!existsSync(dir)) continue;
 			for (const file of readdirSync(dir)) {
 				if (!file.endsWith(".db")) continue;
@@ -324,10 +351,10 @@ export class BackupService {
 					try {
 						out.push(JSON.parse(readFileSync(manifestPath, "utf-8")) as SnapshotManifest);
 					} catch {
-						out.push(stubManifest(snapshotPath, kind));
+						out.push(stubManifest(snapshotPath, kind, sourcePath));
 					}
 				} else {
-					out.push(stubManifest(snapshotPath, kind));
+					out.push(stubManifest(snapshotPath, kind, sourcePath));
 				}
 			}
 		}
@@ -343,7 +370,7 @@ export class BackupService {
 	}
 
 	private rotateKind(kind: SnapshotKind): number {
-		const dir = kind === "core" ? coreBackupDir : wikiBackupDir;
+		const dir = kind === "core" ? this.coreBackupDir : this.wikiBackupDir;
 		if (!existsSync(dir)) return 0;
 		const files = readdirSync(dir)
 			.filter((f) => f.startsWith(`${kind}-`) && f.endsWith(".db"))
@@ -443,13 +470,13 @@ function emptyVerify(error: string): VerifyResult {
 	};
 }
 
-function stubManifest(snapshotPath: string, kind: SnapshotKind): SnapshotManifest {
+function stubManifest(snapshotPath: string, kind: SnapshotKind, sourcePath: string): SnapshotManifest {
 	const stat = statSync(snapshotPath);
 	return {
 		manifestVersion: 1,
 		kind,
 		snapshotPath,
-		sourcePath: kind === "core" ? coreDbPath : wikiDbPath,
+		sourcePath,
 		createdAt: stat.mtime.toISOString(),
 		dbSchemaVersion: 0,
 		sha256: "",

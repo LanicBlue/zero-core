@@ -12,9 +12,12 @@
 //     关闭 (process exit 无未关闭句柄)。
 //   - wiki getter / checkpointWiki / health().wiki: plan-01 起为真实实现
 //     (open() 构造 WikiDatabase,checkpointWiki 调 wal_checkpoint(TRUNCATE),
-//      health() 返回 core + wiki 两项)。backupCore / backupWiki 仍为占位,抛
-//     稳定错误码 WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 填);方法签名锁定
-//     (参数/返回类型),plan-08 可以无 rename 补齐。
+//      health() 返回 core + wiki 两项)。
+//   - P1-4: backupCore / backupWiki 已从 DatabaseManager 删除。backup 单 owner
+//     是 src/server/wiki-backup-service.ts 的 BackupService(snapshot/manifest/
+//     restore via SQLite Backup API + 只读连接)。DatabaseManager 仅持有 DB 路
+//     径 + active-handle lifecycle,通过 getCoreDbPath/getWikiDbPath/
+//     getCoreBackupDir/getWikiBackupDir getter 向 BackupService 暴露路径。
 //   - DatabaseManager 不暴露跨库 SQL/transaction/ATTACH(§G 拒绝条件)。
 //   - core 与 wiki 的 checkpoint/backup 互不委托(结构独立性)。
 //   - readonly 诊断 (check-turns.cjs) 用 file:...?mode=ro + { readonly: true },
@@ -74,7 +77,6 @@ import {
 	setDatabaseManager,
 	getDatabaseManager,
 	DATABASE_LAYOUT_CONFLICT,
-	WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00,
 } from "../../src/server/database-manager.js";
 import { CoreDatabase } from "../../src/server/core-database.js";
 // Value import (not `import type`): plan-01 wiki getter returns a real
@@ -536,7 +538,7 @@ describe("acceptance-00 §D.4 + plan-00 §3 — DatabaseManager lifecycle behavi
 // plan-00 §3 — placeholder signatures LOCKED (no rename in plan-01/08)
 // ============================================================
 
-describe("plan-01 §3 — wiki/checkpointWiki real (plan-01); backupCore/backupWiki placeholders throw stable code (plan-08)", () => {
+describe("plan-01 §3 — wiki/checkpointWiki real (plan-01); P1-4 removed backupCore/backupWiki from DatabaseManager (single owner = BackupService)", () => {
 	test("wiki getter throws before open(); returns a WikiDatabase instance after open (plan-01)", () => {
 		const mgr = new DatabaseManager();
 		// Pre-open: wiki getter throws (mirrors the core getter lifecycle guard).
@@ -585,80 +587,76 @@ describe("plan-01 §3 — wiki/checkpointWiki real (plan-01); backupCore/backupW
 		expect(stripComments(wikiCheckpointBody)).toMatch(/wal_checkpoint\(TRUNCATE\)/);
 	});
 
-	test("backupCore(dest) throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 fills)", () => {
+	test("backupCore/backupWiki are NOT members of DatabaseManager (P1-4: single owner = BackupService)", () => {
+		// P1-4 contract: DatabaseManager no longer exposes backupCore/backupWiki.
+		// The dead placeholder throws (split-ownership smell) were removed;
+		// backup is unified under BackupService (src/server/wiki-backup-service.ts).
+		// Assert the methods are gone from the public surface, both at the
+		// type level (compile-time) and at the runtime prototype level.
 		const mgr = new DatabaseManager();
-		mgr.open();
-		try {
-			expect(() => mgr.backupCore(join(ZERO_CORE_DIR, "snap.db"))).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
-			let caught: any;
-			try { mgr.backupCore(join(ZERO_CORE_DIR, "snap.db")); } catch (e) { caught = e; }
-			expect((caught as Error).message).toMatch(/Plan 08/i);
-		} finally {
-			mgr.close();
-		}
-	});
-
-	test("backupWiki(dest) throws with code WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 (plan-08 fills)", () => {
-		const mgr = new DatabaseManager();
-		mgr.open();
-		try {
-			expect(() => mgr.backupWiki(join(ZERO_CORE_DIR, "snap.db"))).toThrow(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
-			let caught: any;
-			try { mgr.backupWiki(join(ZERO_CORE_DIR, "snap.db")); } catch (e) { caught = e; }
-			expect((caught as Error).message).toMatch(/Plan 08/i);
-		} finally {
-			mgr.close();
-		}
-	});
-
-	test("DATABASE_LAYOUT_CONFLICT and WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 are distinct stable string codes", () => {
-		// plan-00 §4: DATABASE_LAYOUT_CONFLICT is independent of plan-01's
-		// WikiErrorCode namespace. WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 is the
-		// plan-00 placeholder code. Assert they are exported string literals
-		// and do NOT collide.
-		expect(typeof DATABASE_LAYOUT_CONFLICT).toBe("string");
-		expect(typeof WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00).toBe("string");
-		expect(DATABASE_LAYOUT_CONFLICT).toBe("DATABASE_LAYOUT_CONFLICT");
-		expect(WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00).toBe("WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00");
-		expect(DATABASE_LAYOUT_CONFLICT).not.toBe(WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00);
+		expect((mgr as unknown as Record<string, unknown>).backupCore).toBeUndefined();
+		expect((mgr as unknown as Record<string, unknown>).backupWiki).toBeUndefined();
+		expect("backupCore" in mgr).toBe(false);
+		expect("backupWiki" in mgr).toBe(false);
 	});
 
 	// --------------------------------------------------------------------
-	// Compile-time signature lock — plan-01/08 must fill these WITHOUT rename.
-	// We use TypeScript's structural typing to assert the method shapes match
-	// the plan-00 §3 spec exactly. If a future plan renames a method or
-	// changes its parameters/return type, these assertions fail at compile
-	// time (the test file no longer type-checks).
+	// Compile-time signature lock — P1-4 shapes. The kept methods are present
+	// with their plan-00 §3 shapes; backupCore/backupWiki are ABSENT. If a
+	// future change re-adds them or renames a kept method, the type
+	// instantiations below fail at compile time.
 	// --------------------------------------------------------------------
-	test("compile-time signature lock — methods present with plan-00 §3 shapes", () => {
-		// plan-00 §3 locked interface (target shape):
+	test("compile-time signature lock — kept methods present; backupCore/backupWiki NOT members (P1-4)", () => {
+		// Kept plan-00 §3 shapes:
 		//   open(): void
 		//   close(): void
 		//   health(): DatabaseHealthMap
 		//   checkpointCore(): void
 		//   checkpointWiki(): void
-		//   backupCore(dest: string): string
-		//   backupWiki(dest: string): string
 		type _AssertOpen = DatabaseManager["open"] extends () => void ? true : never;
 		type _AssertClose = DatabaseManager["close"] extends () => void ? true : never;
 		type _AssertCheckpointCore = DatabaseManager["checkpointCore"] extends () => void ? true : never;
 		type _AssertCheckpointWiki = DatabaseManager["checkpointWiki"] extends () => void ? true : never;
-		type _AssertBackupCore = DatabaseManager["backupCore"] extends (dest: string) => string ? true : never;
-		type _AssertBackupWiki = DatabaseManager["backupWiki"] extends (dest: string) => string ? true : never;
 		type _AssertCore = DatabaseManager["core"] extends CoreDatabase ? true : never;
 		type _AssertWiki = DatabaseManager["wiki"] extends WikiDatabase | undefined ? true : never;
-		// Force the type-level checks to evaluate (assignment to `true`).
+		// P1-4 NEGATIVE shape lock: backupCore/backupWiki are NOT members. The
+		// conditional resolves to `true` only when the key is absent from
+		// keyof DatabaseManager — assigning `true` to it forces evaluation.
+		type _NoBackupCore = "backupCore" extends keyof DatabaseManager ? false : true;
+		type _NoBackupWiki = "backupWiki" extends keyof DatabaseManager ? false : true;
 		const _ok1: _AssertOpen = true;
 		const _ok2: _AssertClose = true;
 		const _ok3: _AssertCheckpointCore = true;
 		const _ok4: _AssertCheckpointWiki = true;
-		const _ok5: _AssertBackupCore = true;
-		const _ok6: _AssertBackupWiki = true;
-		const _ok7: _AssertCore = true;
-		const _ok8: _AssertWiki = true;
-		// Reference the locals so TS doesn't complain about unused bindings.
+		const _ok5: _AssertCore = true;
+		const _ok6: _AssertWiki = true;
+		const _ok7: _NoBackupCore = true;
+		const _ok8: _NoBackupWiki = true;
 		void [_ok1, _ok2, _ok3, _ok4, _ok5, _ok6, _ok7, _ok8];
 		expect(true).toBe(true); // runtime anchor; the real check is the type instantiations above
+	});
+
+	test("DATABASE_LAYOUT_CONFLICT is a stable string code (P1-4: WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 removed)", () => {
+		// P1-4: WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 was deleted along with the
+		// backupCore/backupWiki placeholder methods. DATABASE_LAYOUT_CONFLICT
+		// remains the sole startup/layout error code (plan-00 §4 closed set).
+		expect(typeof DATABASE_LAYOUT_CONFLICT).toBe("string");
+		expect(DATABASE_LAYOUT_CONFLICT).toBe("DATABASE_LAYOUT_CONFLICT");
+	});
+
+	test("DatabaseManager exposes P1-4 path-authority getters (core/wiki DB + backup dirs)", () => {
+		// P1-4: BackupService consumes these instead of re-importing
+		// database-paths constants. The getters must return string paths
+		// (callers like server/index.ts pass them to BackupService).
+		const mgr = new DatabaseManager();
+		expect(typeof mgr.getCoreDbPath()).toBe("string");
+		expect(mgr.getCoreDbPath()).toMatch(/core\.db$/);
+		expect(typeof mgr.getWikiDbPath()).toBe("string");
+		expect(mgr.getWikiDbPath()).toMatch(/wiki\.db$/);
+		expect(typeof mgr.getCoreBackupDir()).toBe("string");
+		expect(mgr.getCoreBackupDir().length).toBeGreaterThan(0);
+		expect(typeof mgr.getWikiBackupDir()).toBe("string");
+		expect(mgr.getWikiBackupDir().length).toBeGreaterThan(0);
 	});
 });
 
@@ -743,7 +741,7 @@ describe("acceptance-00 §G (d) — DatabaseManager exposes no cross-DB transact
 // §D bullet 2 + §3 independence — core/wiki checkpoint/backup independent
 // ============================================================
 
-describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint/backup are independent", () => {
+describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint are independent (P1-4: backup removed from DatabaseManager)", () => {
 	test("checkpointCore body does NOT delegate to checkpointWiki (or vice versa)", () => {
 		const src = readSrc("src/server/database-manager.ts");
 		// Use findMethodBody to extract ONLY checkpointCore's body (brace-depth
@@ -768,21 +766,6 @@ describe("acceptance-00 §D.2 + plan-00 §3 — core and wiki checkpoint/backup 
 		expect(wikiCode).not.toMatch(/this\.checkpointCore/);
 		expect(wikiCode).toMatch(/this\._wiki/);
 		expect(wikiCode).not.toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
-	});
-
-	test("backupCore body does NOT delegate to backupWiki (or vice versa)", () => {
-		const src = readSrc("src/server/database-manager.ts");
-		const coreBody = findMethodBody(src, /backupCore\(/);
-		expect(coreBody.length).toBeGreaterThan(0);
-		const coreCode = stripComments(coreBody);
-		expect(coreCode).not.toMatch(/this\.backupWiki/);
-		expect(coreCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
-
-		const wikiBody = findMethodBody(src, /backupWiki\(/);
-		expect(wikiBody.length).toBeGreaterThan(0);
-		const wikiCode = stripComments(wikiBody);
-		expect(wikiCode).not.toMatch(/this\.backupCore/);
-		expect(wikiCode).toMatch(/WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00/);
 	});
 
 	test("open() constructs BOTH core and wiki handles (plan-01 ready-order: core + wiki ready before open returns)", () => {

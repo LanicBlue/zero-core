@@ -10,7 +10,9 @@
 //   - 打开 / 关闭 WikiDatabase（plan-01 已实现;独立 wiki.db + 7 表 + 固定根）
 //   - health（core + wiki 两项;plan-01 起补 wiki）
 //   - WAL checkpoint（core + wiki 两项;plan-01 起补 wiki）
-//   - backup（core/wiki 项待 plan-08）
+//   - DB 路径权威:getCoreDbPath / getWikiDbPath / getCoreBackupDir /
+//     getWikiBackupDir(P1-4:供 BackupService 等下游单一消费,避免各自
+//     重导 database-paths 常量)。
 //
 // ## 接口形状（锁定，core/wiki 对称）
 //   readonly core: CoreDatabase            // plan-00 已设
@@ -20,8 +22,10 @@
 //   health(): DatabaseHealthMap            // plan-01 起 core + wiki
 //   checkpointCore(): void                 // plan-00 已实现
 //   checkpointWiki(): void                 // plan-01 实现
-//   backupCore(dest): string               // plan-08 实现
-//   backupWiki(dest): string               // plan-08 实现
+//   getCoreDbPath(): string                // P1-4:路径权威,BackupService 等下游消费
+//   getWikiDbPath(): string                // P1-4
+//   getCoreBackupDir(): string             // P1-4
+//   getWikiBackupDir(): string             // P1-4
 //
 // ## Ready-order 不变量（plan-01 §1）
 //   open() 必须**先**完成 core + wiki 双 ready,再返回 —— 下游 AgentService /
@@ -31,11 +35,13 @@
 // ## 不做
 //   - 跨库 SQL / transaction / 共享 migration（plan-00 §G 拒绝条件）。
 //   - 不对 wiki.db 建立 ATTACH DATABASE 或第二个指向 core.db 的连接。
+//   - backup:snapshot / manifest / restore 由 `src/server/wiki-backup-service.ts`
+//     的 BackupService 独占(SQLite Backup API + 只读连接)。DatabaseManager 早期
+//     草案(plan-00/plan-08)曾在此暴露 backupCore/backupWiki 占位方法,因 split
+//     ownership(P1-4)已删除——单 owner 即 BackupService。
 //
 // ## 错误码
 //   - `DATABASE_LAYOUT_CONFLICT`：启动布局冲突（plan-00 §4）。启动/布局类闭集。
-//   - `WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00`：backupCore/backupWiki 占位码(plan-08
-//     填实现;不是 WikiErrorCode 闭集成员,仅 DatabaseManager 内部用)。
 //
 // ## 维护规则
 //   - 启动序：DatabaseManager 必须在任何 CoreDatabase/WikiDatabase 被业务代码
@@ -57,6 +63,7 @@ import {
 	legacyCoreDbPath,
 	layoutMarkerPath,
 	coreBackupDir,
+	wikiBackupDir,
 	DB_DIR,
 	wikiDbPath,
 } from "../core/database-paths.js";
@@ -111,22 +118,6 @@ export interface DatabaseHealthEntry {
  * 后续若新增启动/布局错误码须在此集中声明，不得散落到 wiki 操作码。
  */
 export const DATABASE_LAYOUT_CONFLICT = "DATABASE_LAYOUT_CONFLICT";
-
-// ===========================================================================
-// # Wiki placeholder codes — plan-01 will move these into wiki-database.ts
-// ---------------------------------------------------------------------------
-// plan-00 阶段 wiki getter/checkpointWiki/backupCore/backupWiki 抛出的占位
-// 错误码。plan-00 §4 的「闭集仅此一个」特指上方启动/布局分区；这些占位
-// 码属于 wiki 子系统（plan-01+），与启动错误码物理分区、命名空间隔离。
-// Plan-01 起 WikiErrorCode 命名空间正式落地后，这些常量搬到
-// src/server/wiki-database.ts，本文件不再持有 wiki 操作码。
-// ===========================================================================
-
-/**
- * Wiki 操作码（占位）。Plan-01 起的 WikiErrorCode 命名空间独立于此处的
- * 启动错误码；此处仅声明 plan-00 阶段 wiki getter 抛出的占位错误码。
- */
-export const WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00 = "WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00";
 
 /**
  * 布局标记文件内容。Plan-00 §4 要求记录 source/target/hash/time/version/
@@ -528,7 +519,9 @@ export function getDatabaseManager(): DatabaseManager | undefined {
  *
  * Plan-00 实现：core / open / close / health(core only) / checkpointCore。
  * Plan-01 实现：wiki / checkpointWiki。
- * Plan-08 实现：backupCore / backupWiki。
+ * P1-4 实现：DB 路径权威 getter(getCoreDbPath / getWikiDbPath /
+ *   getCoreBackupDir / getWikiBackupDir)——供 BackupService 等下游单一消费。
+ *   backupCore/backupWiki 占位方法已删除(backup 单 owner = BackupService)。
  */
 export class DatabaseManager {
 	private _core: CoreDatabase | undefined;
@@ -656,26 +649,30 @@ export class DatabaseManager {
 		this._wiki.checkpoint();
 	}
 
-	/**
-	 * Core DB 备份到 dest。Plan-08 实现（snapshot 用）。Plan-00 阶段 throw。
-	 * 形状锁定：Plan-08 不得改名。
-	 */
-	backupCore(_dest: string): string {
-		throw new Error(
-			`backupCore not implemented in plan-00 (code=${WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00}); `
-			+ `Plan 08 fills this for self-update snapshot.`,
-		);
+	// ─── DB path authority (P1-4) ───────────────────────────────────
+	// 下游(BackupService 等)需要 DB + backup-dir 路径时走这些 getter,而不
+	// 是各自重导 `../core/database-paths.js` 常量。值仍来自 database-paths
+	// (单一物理来源),但 DatabaseManager 是逻辑消费入口——这就把"谁在用活
+	// 跃 DB 路径"收敛到一个 API 面,backup 的 single-owner 边界因此更清晰。
+
+	/** Core DB 主路径(`${ZERO_CORE_DIR}/db/core.db`)。 */
+	getCoreDbPath(): string {
+		return coreDbPath;
 	}
 
-	/**
-	 * Wiki DB 备份到 dest。Plan-08 实现。Plan-00 阶段 throw。
-	 * 形状锁定：Plan-08 不得改名。
-	 */
-	backupWiki(_dest: string): string {
-		throw new Error(
-			`backupWiki not implemented in plan-00 (code=${WIKI_DB_NOT_IMPLEMENTED_IN_PLAN_00}); `
-			+ `Plan 08 fills this for self-update snapshot.`,
-		);
+	/** Wiki DB 主路径(`${ZERO_CORE_DIR}/db/wiki.db`)。 */
+	getWikiDbPath(): string {
+		return wikiDbPath;
+	}
+
+	/** Core 备份目录(`${ZERO_CORE_DIR}/backups/core/`)。 */
+	getCoreBackupDir(): string {
+		return coreBackupDir;
+	}
+
+	/** Wiki 备份目录(`${ZERO_CORE_DIR}/backups/wiki/`)。 */
+	getWikiBackupDir(): string {
+		return wikiBackupDir;
 	}
 }
 
