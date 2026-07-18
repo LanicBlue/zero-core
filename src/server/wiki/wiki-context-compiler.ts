@@ -318,6 +318,13 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 		? safeGetRepositoryBinding(wikiService, access.activeProjectId)
 		: undefined;
 
+	// P1-5: 读 active project 子树下 source_stale 节点数(semantic-sync)。同样
+	// 从 wikiService 内部取 —— preview == runtime(与 binding 同模型,caller 不
+	// 分叉)。count > 0 时在 Project 段渲染显式提示,告知 agent 摘要可能滞后。
+	const projectStaleCount = projectRootPath && access.activeProjectId
+		? safeCountSourceStale(wikiService, access.activeProjectId)
+		: 0;
+
 	// 准备 children(filter → boost → sort)。Memory / Project 走不同 filter。
 	const memoryPrepared = memorySnapshot.root
 		? prepareMemoryChildren(memorySnapshot.children, memoryProfile, workContext, now)
@@ -338,7 +345,7 @@ export async function compileWikiContext(opts: CompileWikiContextOpts): Promise<
 	// 渲染 + 截断。
 	const memoryRender = renderMemorySection(memorySnapshot, memoryPrepared, memoryBudget);
 	const projectRender = projectRootPath
-		? renderProjectSection(projectSnapshot, projectPrepared, projectProfile, projectBudget, projectBinding)
+		? renderProjectSection(projectSnapshot, projectPrepared, projectProfile, projectBudget, projectBinding, projectStaleCount)
 		: renderEmptyProjectSection();
 	const addressesRender = renderAddressesSection(addressLines, addressesBudget);
 	const retrievalGuidance = renderRetrievalGuidance();
@@ -635,6 +642,20 @@ function safeGetRepositoryBinding(wikiService: WikiService, projectId: string): 
 	}
 }
 
+/**
+ * 安全读 active project 子树下 source_stale 节点数(P1-5 semantic-sync)。
+ * 与 {@link safeGetRepositoryBinding} 同模型:compiler 内部从 wikiService 取,
+ * 保证 preview == runtime(同一 wikiService 实例,字节级一致),caller 无法分叉。
+ * 失败 → 0(不阻塞编译;0 即 semantic fresh,与无 stale 同外观)。
+ */
+function safeCountSourceStale(wikiService: WikiService, projectId: string): number {
+	try {
+		return wikiService.countSourceStale(projectId);
+	} catch {
+		return 0;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 内部:filter → boost → sort pipeline
 // ---------------------------------------------------------------------------
@@ -927,6 +948,7 @@ function renderProjectSection(
 	profile: Profile,
 	budgetTokens: number,
 	binding: WikiRepositoryRow | undefined,
+	staleNodeCount: number,
 ): SectionRenderResult {
 	if (!snapshot.root) {
 		return renderEmptyProjectSection();
@@ -950,6 +972,16 @@ function renderProjectSection(
 	// last_error / last_indexed_at),缺省 → 显式 empty state。
 	for (const line of renderRepoBinding(binding)) {
 		out.push(line);
+	}
+
+	// P1-5: semantic-sync 显式提示。structure 可以已 synced,但 modify 节点的
+	// summary/content 可能滞后(等 Archivist 重新充实)。count > 0 时给 agent 一行
+	// 警示,让它对 stale 节点采取保守策略(优先 search/read 源文件而非依赖摘要,
+	// 或主动 update 重新概括)。count === 0 时不渲染(避免噪音)。
+	if (staleNodeCount > 0) {
+		out.push(
+			`Semantic sync: ${staleNodeCount} node(s) have stale summaries (structure is synced but content may be outdated — re-summarization pending).`,
+		);
 	}
 
 	let used = estimateTokens(out.join("\n"));

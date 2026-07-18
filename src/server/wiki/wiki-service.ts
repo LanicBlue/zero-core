@@ -296,6 +296,40 @@ export class WikiService {
 		return this.deps.repositoryStore.repositories.getByProjectId(projectId);
 	}
 
+	/**
+	 * 数 active project 子树下 `source_stale=true` 的节点数(plan-05 §6 P1-5
+	 * semantic-sync)。
+	 *
+	 * **定位**:**structure-sync vs semantic-sync** 区分(P1-5):
+	 *   - `syncStatus`(structure)= Git tree / binding 是否已索引到 HEAD(indexer 管)。
+	 *   - `source_stale` count(semantic)= 已索引的节点里,有多少 source 文件变了
+	 *     但 summary/content 还没被 Archivist 重新充实。
+	 * 一个项目可以 structure=synced 同时 semantic=stale(N 个 modify 等 enrichment)。
+	 *
+	 * **Layering(与 {@link getRepositoryBinding} 同模型)**:service-level accessor,
+	 * 不接 ctx。理由:
+	 *   1. status endpoint(`wiki-admin-router`)在 server host admin 上下文运行。
+	 *   2. wiki-context-compiler 已通过 `getRepositoryBinding(projectId)` 无 ctx
+	 *      读 binding 行(只在 `access.activeProjectId` 存在时调用,即 agent 已有
+	 *      project grant,否则 activeProjectId 为 undefined 不会走到这里)。本计数是
+	 *      同级 metadata(一个数字,不泄露节点正文),与 binding 同模型无 ctx。
+	 *   3. 节点正文仍由 expand/read 的 grant 体系保护;这里只返 COUNT。
+	 *
+	 * **单一真相源**:status endpoint / Project Prompt / UI 都走本方法,不重复 SQL。
+	 * 项目未绑定 / 根节点不存在 → 返回 0(与 getRepositoryBinding 返 undefined 同语义:
+	 * 没有子树就没有 stale 节点)。
+	 */
+	countSourceStale(projectId: string): number {
+		const projectRootPath = `${WIKI_ROOT_PATH}/projects/${projectId}`;
+		const escaped = projectRootPath.replace(/[%_]/g, (c) => "\\" + c);
+		try {
+			return this.deps.nodeRepo.countSourceStaleUnder(escaped);
+		} catch {
+			// 与 safeGetRepositoryBinding 同兜底:DB 异常不阻塞 status/编译。
+			return 0;
+		}
+	}
+
 	// =========================================================================
 	// read —— summary / content / links / all / source
 	// =========================================================================
@@ -485,6 +519,29 @@ export class WikiService {
 				const currentContent = patch.content ?? node.content;
 				const newContent = this.deps.editService.applyOperations(currentContent, req.operations);
 				patch.content = newContent;
+			}
+
+			// P1-5: 语义更新(summary / content 重新概括)→ 清除 source_stale /
+			// source_stale_at。理由:source_stale 由 indexer 在 MODIFY change 时置位
+			// (wiki-project-indexer.ts ~1093),意思是「source 文件变了,摘要可能过时,
+			// 等 Archivist 重新充实」。一旦 summary/content 被 Archivist 或任何 agent
+			// update(语义层 enrichment 完成),该节点就不再是 semantic stale —— 这里
+			// 自动清位,让 status endpoint / Project Prompt 的 semanticStaleNodeCount 随
+			// enrichment 进度 drain 到 0。仅 attributes patch(无 summary/content 改动)
+			// 不触发清位 —— 例如 agent 显式标 attrs.confidence=low 不应误清 stale。
+			//
+			// 合并语义:若 caller 同时 patch 了 attributes,以已 patched 的 attributes 为
+			// base 再清 stale(避免覆盖 caller 的 attributes 改动);无 stale 标志则不写
+			// attributes_json(避免无谓写入 + revision 噪音)。
+			if (patch.summary !== undefined || patch.content !== undefined) {
+				const baseAttrs = patch.attributes_json !== undefined
+					? parseAttributesJson(patch.attributes_json)
+					: parseAttributesJson(node.attributes_json);
+				if (baseAttrs.source_stale === true || baseAttrs.source_stale_at !== undefined) {
+					delete baseAttrs.source_stale;
+					delete baseAttrs.source_stale_at;
+					patch.attributes_json = JSON.stringify(baseAttrs);
+				}
 			}
 
 			// source-bound 节点(design §6.3 / plan-02 §4):

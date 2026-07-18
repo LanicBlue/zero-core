@@ -157,6 +157,14 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 		failed: "#f07057",
 	};
 
+	// P1-5: semantic-sync 配色(与 structure syncStatus 正交)。fresh=已追平,
+	// stale=N 个 source_stale 节点等 Archivist 重新充实。颜色刻意与 syncColor
+	// 区分(此处用紫/橙而非复用绿/橙),让用户一眼看出两个独立维度。
+	const semanticColor: Record<string, string> = {
+		fresh: "#9C8CFF",
+		stale: "#FF9800",
+	};
+
 	return (
 		<div style={{
 			background: "var(--bg-secondary, #1c1c1e)",
@@ -168,13 +176,37 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 				<h4 style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>Wiki Git binding</h4>
 				<div style={{ flex: 1 }} />
 				{status && (
-					<span style={{
-						fontSize: 10, padding: "2px 6px", borderRadius: 3,
-						color: syncColor[status.syncStatus] ?? "#888",
-						border: `1px solid ${syncColor[status.syncStatus] ?? "#888"}55`,
-					}}>
-						{status.syncStatus}
-					</span>
+					<>
+						{/* P1-5: structure-sync badge (Git tree indexed to HEAD). */}
+						<span
+							title="Structure sync: Git tree / binding indexed to HEAD"
+							style={{
+								fontSize: 10, padding: "2px 6px", borderRadius: 3,
+								color: syncColor[status.syncStatus] ?? "#888",
+								border: `1px solid ${syncColor[status.syncStatus] ?? "#888"}55`,
+							}}
+						>
+							struct: {status.syncStatus}
+						</span>
+						{/* P1-5: semantic-sync badge (orthogonal to struct). Deliberately a
+							separate badge so the user can see struct=synced BUT semantic=stale
+							at the same time. Color palette distinct from syncColor. */}
+						<span
+							title={
+								status.semanticSyncStatus === "stale"
+									? `Semantic sync: ${status.semanticStaleNodeCount} node(s) have stale summaries (source changed, re-summarization pending)`
+									: "Semantic sync: all indexed nodes have current summaries"
+							}
+							style={{
+								fontSize: 10, padding: "2px 6px", borderRadius: 3,
+								color: semanticColor[status.semanticSyncStatus] ?? "#888",
+								border: `1px solid ${semanticColor[status.semanticSyncStatus] ?? "#888"}55`,
+							}}
+						>
+							sem: {status.semanticSyncStatus}
+							{status.semanticSyncStatus === "stale" ? ` (${status.semanticStaleNodeCount})` : ""}
+						</span>
+					</>
 				)}
 				<button type="button" onClick={() => void refresh()} style={ghostBtnStyle} disabled={loading}>
 					{loading ? "..." : "Refresh"}
@@ -200,6 +232,21 @@ export function WikiProjectCard({ project, onOpenWiki }: Props) {
 							⚠ HEAD drifted from indexed revision — run reindex to sync.
 						</div>
 					)}
+					{/* P1-5: Semantic sync row — DISTINCT from structure syncStatus above.
+						Shows the source_stale node count so the user understands structure
+						can be synced while summaries still lag (waiting on Archivist). */}
+					<Row
+						label="Semantic sync"
+						value={
+							status.semanticSyncStatus === "stale" ? (
+								<span style={{ color: semanticColor.stale }}>
+									stale — {status.semanticStaleNodeCount} node(s) need re-summarization
+								</span>
+							) : (
+								<span style={{ color: semanticColor.fresh }}>fresh</span>
+							)
+						}
+					/>
 					<Row label="Last indexed" value={status.lastIndexedAt ? new Date(status.lastIndexedAt).toLocaleString() : "—"} />
 					{status.lastError && (
 						<div style={{ fontSize: 10, color: "#f07057", marginTop: 4, padding: 4, background: "#f0705722", borderRadius: 3 }}>

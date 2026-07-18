@@ -186,6 +186,57 @@ export const WIKI_OPERATIONS: WikiOperation[] = [
 			"完成后简述:更新了多少文件、补建了多少、标记失效了多少。",
 		].join("\n"),
 	},
+	{
+		// P1-5: 针对 semantic-sync 的定向充实操作。indexer 在每次 Git MODIFY
+		// change 上把对应节点 attributes.source_stale 置位("source 变了,摘要可能
+		// 过时")。本操作只挑这些节点 + 必要祖先重新概括,避免重扫整树。成功 update
+		// summary/content 后 WikiService 自动清 source_stale(见 wiki-service.update
+		// 的 P1-5 清位块),所以 Project Prompt / status endpoint 的
+		// semanticStaleNodeCount 会随你充实进度 drain 到 0。
+		id: "wiki-stale-sync",
+		name: "Stale 摘要充实",
+		description: "只针对 attributes.source_stale=true 的节点(+ 必要祖先目录)重新概括 summary/content,drain semantic-sync 待办(增量、最省 token)",
+		prompt: [
+			`增量充实项目 "{projectName}" 中 source 文件已变但摘要滞后的节点。`,
+			"",
+			"背景:indexer 在每次 Git commit 的 MODIFY change 上把对应 source-bound 节点",
+			"的 attributes.source_stale 标成 true(意思是「source 变了,summary/content 可能",
+			"过时,等重新概括」)。你的任务就是把这些 stale 节点挑出来重新概括,标完一个,",
+			"WikiService 会自动清掉它的 source_stale,semantic-sync 待办随之 drain。",
+			"",
+			"执行策略(递归型任务):stale 节点可能很多,逐节点单线程做既慢又容易把上下文撑爆。",
+			"**优先用 Agent 工具把不同的子树/分支委派给子 agent 并行充实** —— 独立分支用",
+			"non_blocking 模式同时跑,你自己只负责拆分调度 + 汇总。下面是每个节点的充实规范,",
+			"你或委派出去的子 agent 都按此执行。",
+			"",
+			"寻址约定:用 `project://` 前缀代表 active 项目根,例如 `project://src/server/wiki-service`。",
+			"expand 返回 canonical path(`wiki-root/projects/<id>/...`)和节点 attributes(含 ",
+			"`source_stale`),后续 read/update 可任选格式。",
+			"",
+			"1. 用 Wiki(action:'expand', node:'project://') 从项目根开始遍历,**只挑 attributes",
+			"   .source_stale === true 的节点**(expand/read 的结果里节点都带 attributes 字段,",
+			"   直接看 source_stale)。优先 source_file 节点;directory 节点若 source_stale 也算。",
+			"2. 对每个 stale 的 source_file 节点:用 Read 读当前源文件,然后",
+			"   Wiki(action:'update', node, expected_revision, changes:{summary, content}) 重写",
+			"   summary + content(讲清职责/关键导出/依赖/设计意图)。update summary 或 content 后",
+			"   节点的 source_stale 会被自动清除 —— 不要手动 patch attributes.source_stale。",
+			"3. 对 stale 的 directory 节点:聚合已更新的子节点信息,update content 说明该层组织。",
+			"4. 若某 stale 节点的祖先 directory 摘要也明显过时(子节点内容大改),顺带 update 祖先",
+			"   的 content(必要祖先 enrichment)。",
+			"5. 持续直到没有 attributes.source_stale === true 的 active 节点。",
+			"",
+			"硬约束:",
+			"- 只在 active project wiki 子树内 update;不跨项目。",
+			"- source-bound 节点的结构性操作(create/move/delete)返回 SOURCE_MANAGED —— 结构",
+			"  变更必须改文件并 commit,让 indexer 同步。语义字段(summary/content/attributes)可自由 update。",
+			"- 每次 update 必须带 expected_revision(从 expand/read 拿到);冲突 → WRITE_CONFLICT,",
+			"  re-read 后重试。",
+			"- 不要自己 patch attributes.source_stale / source_stale_at —— 让 update summary/content",
+			"  自动清位;手动 patch 反而会和自动清位抢写 attributes。",
+			"- 遇到读不到 / 拿不准的,留 attrs.confidence=low,不要瞎编。",
+			"完成后简述:重新概括了多少 stale 节点、还剩多少(若中途 token 耗尽)。",
+		].join("\n"),
+	},
 ];
 
 /**

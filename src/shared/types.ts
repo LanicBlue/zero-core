@@ -1410,8 +1410,11 @@ export interface AgentVia {
 /**
  * v0.8 wiki 构建操作 id(操作 prompt 绑操作,不绑角色)。放 shared 以避免
  * server/renderer 循环引用。详见 server/wiki-operations.ts WIKI_OPERATIONS。
+ *
+ * P1-5 新增 `wiki-stale-sync`:定向充实 attributes.source_stale=true 的节点,
+ * drain semantic-sync 待办(见 wiki-operations.ts 的操作 prompt)。
  */
-export type WikiOperationId = "doc-rebuild" | "git-update" | "wiki-enrich";
+export type WikiOperationId = "doc-rebuild" | "git-update" | "wiki-enrich" | "wiki-stale-sync";
 
 /**
  * v0.8 enrich / archivist 绑定的请求体。via.agentId 必填(无 fallback —— 必须

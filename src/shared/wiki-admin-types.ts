@@ -158,9 +158,33 @@ export interface WikiAdminRepositoryView {
 	/** Git HEAD(实时解析,可能等于 indexedRevision)。 */
 	headRevision: string | null;
 	indexedRevision: string | null;
+	/**
+	 * STRUCTURE sync(= Git tree / binding 是否已索引到 HEAD;indexer 管)。
+	 * 与下面的 `semanticSyncStatus` **显式区分**(P1-5):一个项目可以
+	 * `syncStatus="synced"` 同时 `semanticSyncStatus="stale"` —— 结构已追上
+	 * HEAD,但 N 个 modify 节点的 summary/content 还没被 Archivist 重新充实。
+	 */
 	syncStatus: "pending" | "indexing" | "synced" | "stale" | "failed";
 	lastError: string | null;
 	lastIndexedAt: string | null;
+	/**
+	 * SEMANTIC sync(P1-5):项目子树下 `attributes.source_stale=true` 的 active
+	 * 节点数。这些节点的 source 文件已变(indexer 在 MODIFY 时打 stale),但
+	 * summary/content 尚未重新充实。计数来自 {@link WikiService.countSourceStale}
+	 * (单一真相源;status endpoint / compiler / UI 共用)。
+	 *
+	 * 0 = 没有 stale 节点(semantic 全部追平);N = N 个节点等 Archivist 充实。
+	 * 未绑定 / 无项目子树 → 0。
+	 */
+	semanticStaleNodeCount: number;
+	/**
+	 * SEMANTIC sync 派生态(P1-5):`"fresh"` 当 `semanticStaleNodeCount === 0`,
+	 * 否则 `"stale"`。与 `syncStatus`(structure)正交:
+	 *   - structure synced + semantic fresh = 完全追平。
+	 *   - structure synced + semantic stale = 结构追平但摘要滞后(常见,等 Archivist)。
+	 *   - structure indexing/pending + semantic fresh = 结构还在追,但已索引部分无 stale。
+	 */
+	semanticSyncStatus: "fresh" | "stale";
 }
 export interface RepositoryListResult {
 	repositories: WikiAdminRepositoryView[];

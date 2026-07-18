@@ -177,6 +177,40 @@ export class WikiNodeRepository {
 	}
 
 	/**
+	 * 数某子树下 active 且 `attributes_json.source_stale = true` 的节点数
+	 * (plan-05 §6 P1-5 区分 structure-sync vs semantic-sync)。
+	 *
+	 * `source_stale` 由 wiki-project-indexer 在 MODIFY change 时置位
+	 * (见 wiki-project-indexer.ts ~1093):意思是「该节点的 source 文件变了,
+	 * summary/content 可能已过时,等 Archivist 重新充实」。本计数暴露
+	 * semantic-sync 待办量 —— status endpoint / Project Prompt / UI 都用它。
+	 *
+	 * 单条 `SELECT COUNT(*)` + `json_extract` + LIKE 前缀 —— 不读正文,廉价。
+	 * 归档节点不计入。**严格后代**(LIKE `<escapedPrefix>/%`),不含 subtree 根
+	 * 自身(项目根节点是合成容器,非 source-bound,永远不会 source_stale)。
+	 *
+	 * @param escapedPrefix **已 escape** 的 path 前缀(同 {@link getAllByPathPrefix}
+	 *   约定:`%`/`_` 已转义为 `\%`/`\_`)。调用方负责 escape,避免双重 escape。
+	 *   本方法加 `/%` 后缀 + ESCAPE `'\'`。服务层 {@link WikiService.countSourceStale}
+	 *   负责解析 projectId → 项目根 path → escape → 调本 primitive。
+	 *
+	 * 不开 transaction(纯读)。无授权(与 countActiveChildren 同模型:授权在
+	 * service 层 / 调用上下文)。
+	 */
+	countSourceStaleUnder(escapedPrefix: string): number {
+		const row = this.db
+			.prepare(
+				`SELECT COUNT(*) AS n
+				 FROM wiki_nodes
+				 WHERE path LIKE ? || '/%' ESCAPE '\\'
+				   AND archived_at IS NULL
+				   AND json_extract(attributes_json, '$.source_stale') = 1`,
+			)
+			.get(escapedPrefix) as { n: number } | undefined;
+		return row?.n ?? 0;
+	}
+
+	/**
 	 * 按 parent_id 分页查 active 直接 children。
 	 *
 	 * 排序键:path ASC + id ASC(稳定)。cursor 用上一页最后一行的 `{path, id}`。
