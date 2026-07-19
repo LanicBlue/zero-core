@@ -555,8 +555,9 @@ cutover 删除的 software-dev seed 子树。
 在原 runtime:// 别名稳定性断言之后追加两道新断言，证明 Git rename 真正同步进
 wiki 树（覆盖删除的 fresh-env "Git rename + sync" skip）：
 
-1. **NEW path 节点可达**：搜索 `runtime/app.ts` 命中 path 含 `runtime` 的活跃节点
-   （带 15s FTS-lag 重试）；
+1. **NEW path 节点可达**：`/api/wiki/read { address: newPath }` 返 HTTP 200 命中
+   path 含 `runtime` 的活跃节点（带 15s 重试；用 read 而非 search,避免 FTS 分词
+   噪声）；
 2. **OLD path 节点不再可达**：`/api/wiki/read { address: appPath }` 返回 HTTP 400
    且 `error.code === "NOT_FOUND"`（rename = 移动，不是复制；旧 canonical path
    不得作为活跃节点残留）。

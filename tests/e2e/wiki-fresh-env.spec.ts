@@ -401,9 +401,9 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 	// "§G.1 runtime:// resolves to renamed target's new canonical path", which
 	// binds a real git repo, runs `git mv src/app.ts src/runtime/app.ts` +
 	// commit, triggers `/api/wiki-admin/repositories/reindex`, waits for sync,
-	// and asserts (a) the NEW path node is reachable via search and (b) the OLD
-	// path is no longer an active node (rename moved it, didn't duplicate).
-	// That subsumes what this placeholder would have done.
+	// and asserts (a) the NEW path node is reachable via `/api/wiki/read` and
+	// (b) the OLD path is no longer an active node (rename moved it, didn't
+	// duplicate). That subsumes what this placeholder would have done.
 });
 
 // ─── Small fs helpers (avoid pulling extra deps) ─────────────────────

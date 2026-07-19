@@ -140,7 +140,8 @@ async function importFileViaPlus(window: import("@playwright/test").Page, filePa
  * Click Send (the non-abort, non-attach button in the input bar).
  */
 async function clickSend(window: import("@playwright/test").Page): Promise<void> {
-	await window.locator(".chat-input-bar button:not(.btn-abort):not(.btn-attach)").click();
+	// round-3 review P1-1:统一用 accessible-name 定位 Send(抗未来输入按钮)。
+	await window.getByRole("button", { name: "Send" }).click();
 }
 
 /**
@@ -342,7 +343,7 @@ test.describe("Multimodal input (sub-7)", () => {
 		await expect(window.locator(".chat-input-attachments .attach-chip")).toBeVisible({ timeout: 10_000 });
 
 		// Send button is NOT disabled (attachment-only is allowed per sub-5).
-		const sendBtn = window.locator(".chat-input-bar button:not(.btn-abort):not(.btn-attach)");
+		const sendBtn = window.getByRole("button", { name: "Send" });
 		await expect(sendBtn).not.toHaveAttribute("disabled");
 
 		// Send — should succeed and the mock receives the image.

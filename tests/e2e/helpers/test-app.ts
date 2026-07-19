@@ -176,9 +176,11 @@ export async function selectTestAgent(window: Page): Promise<void> {
 // Send a chat message and return when streaming finishes (cursor-blink detached).
 export async function sendChatMessage(window: Page, text: string): Promise<void> {
 	await window.locator(".chat-input-bar textarea").fill(text);
-	// multimodal-input sub-5 added a .btn-attach button next to Send; exclude it
-	// (and the .btn-abort stop button shown mid-stream) to stay on the Send button.
-	await window.locator(".chat-input-bar button:not(.btn-abort):not(.btn-attach)").click();
+	// round-3 review P1-1:统一用 accessible-name 定位 Send(与 error-handling.spec
+	// 一致)。旧 `button:not(.btn-abort):not(.btn-attach)` CSS 排除法脆弱 —— 新增
+	// 任何输入按钮 class 都会再破。getByRole("button",{name:"Send"}) 只匹配文本
+	// "Send" 的按钮,稳定且抗未来按钮。
+	await window.getByRole("button", { name: "Send" }).click();
 	// Wait for streaming to begin, then for it to end
 	await window.waitForSelector(".cursor-blink", { timeout: 5_000, state: "attached" }).catch(() => {});
 	await window.waitForSelector(".cursor-blink", { timeout: 30_000, state: "detached" });

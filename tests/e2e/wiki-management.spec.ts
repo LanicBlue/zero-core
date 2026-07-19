@@ -135,18 +135,19 @@ function gitRenameAndCommit(repo: string, oldRel: string, newRel: string): void 
  * The repo path is already known to the indexer via ProjectStore.workspaceDir
  * (set when the project is created with workspaceDir=repo). Pass "" to index
  * the whole repo. */
-async function bindAndIndex(port: number, projectId: string, _repo: string): Promise<void> {
-	await apiPost(port, "/api/wiki-admin/repositories/bind", {
-		projectId,
-		sourceRoot: "",
-		defaultBranch: "main",
-	});
-	// round-2 review P1 §6.1/§6.2:必须按目标 projectId 查状态(旧代码取
-	// repositories[0],多项目时 [0] 是已 synced 的第一个,循环立刻退出,第二
-	// 项目可能仍 pending → §G.5 multi-project 断言失败)。现在:只在该项目
-	// synced 时返回;failed 立即抛(lastError);超时抛带诊断(projectId /
-	// 最后状态 / indexedRevision)。不用固定 sleep,400ms 轮询。
-	const deadline = Date.now() + 30_000;
+/**
+ * 等待某 project 达到 `synced`(round-3 review P2-1:统一 bindAndIndex 与 §G.1
+ * reindex 的同步状态轮询契约)。严格 synced 契约(与 review §6.2 / bindAndIndex
+ * 一致):
+ *   - syncStatus === "synced" → 成功返回
+ *   - syncStatus === "failed" → 立即抛错并附 lastError
+ *   - 其他(pending / indexing / 未出现 / 未来新增状态)→ 继续 400ms 轮询
+ *   - 超时 → 抛 projectId / 最后状态 / indexedRevision 诊断
+ * 旧 §G.1 用 `!== "indexing" → break` 把 pending/failed/未出现都当成功 —— 错。
+ * 后续 NEW/OLD path read 重试不替代本检查(它们验索引结果,不判同步生命周期)。
+ */
+async function waitForProjectSynced(port: number, projectId: string, timeoutMs = 30_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
 	let lastStatus = "unknown";
 	let lastIndexed: unknown = undefined;
 	let lastError: unknown = undefined;
@@ -159,16 +160,25 @@ async function bindAndIndex(port: number, projectId: string, _repo: string): Pro
 		lastError = entry?.lastError ?? entry?.last_error;
 		if (lastStatus === "failed") {
 			throw new Error(
-				`bindAndIndex: project ${projectId} sync failed (lastError=${lastError})`,
+				`waitForProjectSynced: project ${projectId} sync failed (lastError=${lastError})`,
 			);
 		}
 		if (lastStatus === "synced") return;
 		await new Promise((r) => setTimeout(r, 400));
 	}
 	throw new Error(
-		`bindAndIndex: project ${projectId} did not reach synced within 30s `
+		`waitForProjectSynced: project ${projectId} did not reach synced within ${timeoutMs / 1000}s `
 		+ `(lastStatus=${lastStatus}, indexedRevision=${lastIndexed})`,
 	);
+}
+
+async function bindAndIndex(port: number, projectId: string, _repo: string): Promise<void> {
+	await apiPost(port, "/api/wiki-admin/repositories/bind", {
+		projectId,
+		sourceRoot: "",
+		defaultBranch: "main",
+	});
+	await waitForProjectSynced(port, projectId);
 }
 
 /** Open AgentEditor for the first agent in the list (fresh-DB seed always has ≥1). */
@@ -248,17 +258,10 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 			projectId,
 			full: false,
 		});
-		// Wait for the reindex to settle. round-2 review-fix R5(3 方向验收残留):
-		// 统一用 find by projectId(旧 repositories[0] 在多项目时会取错项;§G.1 虽
-		// 单项目安全,但与 bindAndIndex 对齐避免未来 multi-project 变体重踩 §6.1)。
-		const deadline = Date.now() + 30_000;
-		while (Date.now() < deadline) {
-			const list = await apiPost(port, "/api/wiki-admin/repositories/list");
-			const repos = list?.result?.repositories ?? [];
-			const entry = repos.find((r: any) => r.projectId === projectId);
-			if (entry?.syncStatus !== "indexing") break;
-			await new Promise((r) => setTimeout(r, 400));
-		}
+		// Wait for the reindex to settle. round-3 review P2-1:复用严格 synced 契约
+		// 的共享 helper(旧 `!== "indexing" → break` 把 pending/failed/未出现都当
+		// 成功;现统一为只在 synced 时返回、failed 抛、超时诊断,与 bindAndIndex 一致)。
+		await waitForProjectSynced(port, projectId);
 
 		// 4. The runtime:// alias now resolves to the SAME node at its NEW path.
 		const list = await apiPost(port, "/api/wiki-admin/addresses/list");

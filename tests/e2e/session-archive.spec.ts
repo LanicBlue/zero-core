@@ -139,7 +139,8 @@ test.describe("Session archive model", () => {
 	test("archiving mid-stream cleanly interrupts and starts a fresh session", async () => {
 		// Kick off a message but don't wait for streaming to finish.
 		await window.locator(".chat-input-bar textarea").fill("streaming message");
-		await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+		// round-3 review P1-1:统一 getByRole Send(旧 button:not(.btn-abort) 歧义 .btn-attach)。
+		await window.getByRole("button", { name: "Send" }).click();
 
 		// Wait until streaming is visibly in progress.
 		await expect(window.locator(".cursor-blink")).toBeAttached({ timeout: 10_000 });

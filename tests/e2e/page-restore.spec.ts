@@ -87,7 +87,8 @@ test.describe("Page restore — agent running in background", () => {
 	test("streaming continues in background and messages restore on return", async () => {
 		// 1. Send message but do NOT wait for streaming to complete
 		await window.locator(".chat-input-bar textarea").fill("hello bg");
-		await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+		// round-3 review P1-1:统一 getByRole Send(旧 button:not(.btn-abort) 歧义 .btn-attach)。
+		await window.getByRole("button", { name: "Send" }).click();
 
 		// Wait for streaming to start (cursor-blink appears)
 		await window.waitForSelector(".cursor-blink", { timeout: 5_000, state: "attached" });

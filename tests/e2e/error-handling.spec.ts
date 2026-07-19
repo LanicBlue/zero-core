@@ -46,7 +46,12 @@ test.describe("Error handling", () => {
 		await selectTestAgent(window);
 
 		await window.locator(".chat-input-bar textarea").fill("trigger error");
-		await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+		// round-3 review P1-1:用稳定 accessible-name 定位 Send 按钮。旧选择器
+		// `.chat-input-bar button:not(.btn-abort)` 同时命中 multimodal-input sub-5
+		// 的 `.btn-attach`(+ 按钮),Playwright strict mode 报错 → 3 个 case 稳定
+		// 失败。`getByRole("button", {name:"Send"})` 只匹配文本 "Send" 的按钮,
+		// 不匹配 "+"(btn-attach)/"Stop"(btn-abort),且抗未来新增输入按钮。
+		await window.getByRole("button", { name: "Send" }).click();
 
 		const banner = window.locator(".error-banner");
 		await expect(banner).toBeVisible({ timeout: 20_000 });
@@ -60,7 +65,7 @@ test.describe("Error handling", () => {
 		await selectTestAgent(window);
 
 		await window.locator(".chat-input-bar textarea").fill("trigger error");
-		await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+		await window.getByRole("button", { name: "Send" }).click();
 
 		const banner = window.locator(".error-banner");
 		await expect(banner).toBeVisible({ timeout: 20_000 });
@@ -77,7 +82,7 @@ test.describe("Error handling", () => {
 		await selectTestAgent(window);
 
 		await window.locator(".chat-input-bar textarea").fill("trigger error");
-		await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+		await window.getByRole("button", { name: "Send" }).click();
 
 		const banner = window.locator(".error-banner");
 		await expect(banner).toBeVisible({ timeout: 20_000 });
