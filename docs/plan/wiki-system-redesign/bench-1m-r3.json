@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-07-18T16:21:26.912Z",
+  "commitSha": "da09b93e0d0dcdda4ccaefe1e61a77866532b6a3",
+  "branch": "worktree-wiki-redesign",
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpus": "12th Gen Intel(R) Core(TM) i5-12400F",
+    "cpuCount": 12,
+    "totalMemMB": 16220,
+    "nodeVersion": "24.12.0"
+  },
+  "dataGeneration": {
+    "targetNodes": 1000000,
+    "actualNodes": 1015626,
+    "linksCreated": 64,
+    "treeWide": 64,
+    "treeDepth": 4,
+    "genMs": 21498.68
+  },
+  "results": [
+    {
+      "label": "S1 canonical path read",
+      "totalMs": 9.704,
+      "iterations": 500,
+      "perOpUs": 19.41,
+      "rowsTouched": 500,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX uq_wiki_nodes_active_path (path=?)"
+    },
+    {
+      "label": "S2 parent expand + pagination",
+      "totalMs": 20.294,
+      "iterations": 200,
+      "perOpUs": 101.47,
+      "rowsTouched": 10000,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_parent_archived (parent_id=? AND archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    },
+    {
+      "label": "S3a outgoing links",
+      "totalMs": 14.079,
+      "iterations": 500,
+      "perOpUs": 28.16,
+      "rowsTouched": 4000,
+      "planAsserted": true,
+      "plan": "SEARCH l USING COVERING INDEX sqlite_autoindex_wiki_links_1 (source_id=?) | SEARCH t USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S3b incoming links",
+      "totalMs": 11.929,
+      "iterations": 500,
+      "perOpUs": 23.86,
+      "rowsTouched": 188,
+      "planAsserted": true,
+      "plan": "SEARCH l USING INDEX idx_wiki_links_target (target_id=?) | SEARCH s USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S4 FTS top-k",
+      "totalMs": 994.731,
+      "iterations": 200,
+      "perOpUs": 4973.66,
+      "rowsTouched": 400,
+      "planAsserted": true,
+      "plan": "SCAN f VIRTUAL TABLE INDEX 32:M3 | SEARCH n USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S5 authorized multi-scope search",
+      "totalMs": 35951.793,
+      "iterations": 100,
+      "perOpUs": 359517.93,
+      "rowsTouched": 2000,
+      "planAsserted": true,
+      "plan": "SCAN f VIRTUAL TABLE INDEX 32:M3 | SEARCH n USING INTEGER PRIMARY KEY (rowid=?)"
+    },
+    {
+      "label": "S6 subtree move (bounded, read + 50 UPDATE)",
+      "totalMs": 2070.273,
+      "iterations": 5,
+      "perOpUs": 414054.66,
+      "rowsTouched": 78,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_archived (archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    },
+    {
+      "label": "S7 candidate bounded SELECT (scanCap 5000)",
+      "totalMs": 28.954,
+      "iterations": 200,
+      "perOpUs": 144.77,
+      "rowsTouched": 12800,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_parent_archived (parent_id=? AND archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    },
+    {
+      "label": "S8 candidate grouped childrenCount (batch 64)",
+      "totalMs": 6.061,
+      "iterations": 200,
+      "perOpUs": 30.3,
+      "rowsTouched": 0,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING COVERING INDEX idx_wiki_nodes_parent_archived (parent_id=? AND archived_at=?)"
+    },
+    {
+      "label": "S9 candidate scale width=100 (tail zzz-critical priority=999 fetched 50/50)",
+      "totalMs": 8.116,
+      "iterations": 50,
+      "perOpUs": 162.31,
+      "rowsTouched": 50,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_parent_archived (parent_id=? AND archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    },
+    {
+      "label": "S9 candidate scale width=1000 (tail zzz-critical priority=999 fetched 50/50)",
+      "totalMs": 73.646,
+      "iterations": 50,
+      "perOpUs": 1472.93,
+      "rowsTouched": 50,
+      "planAsserted": true,
+      "plan": "SEARCH wiki_nodes USING INDEX idx_wiki_nodes_parent_archived (parent_id=? AND archived_at=?) | USE TEMP B-TREE FOR ORDER BY"
+    }
+  ],
+  "allPlansOk": true,
+  "totalRunMs": 42284.21,
+  "rssBeforeMB": 158,
+  "rssAfterMB": 160
+}

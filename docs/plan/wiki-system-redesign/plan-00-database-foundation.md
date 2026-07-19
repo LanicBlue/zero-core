@@ -58,12 +58,19 @@ interface DatabaseManager {
   health(): DatabaseHealthMap;         // { core, wiki }(Plan 00 阶段 wiki 项省略)
   checkpointCore(): void;
   checkpointWiki(): void;              // Plan 01 实现;core/wiki 的 WAL checkpoint 各自独立
-  backupCore(dest): string;            // Plan 08 snapshot 用
-  backupWiki(dest): string;            // Plan 08 snapshot 用;core/wiki backup 各自独立
+  // 路径权威 getter(round-1 P1-4 / round-2 review §7.1):BackupService 单 owner
+  // 消费这些 getter,不再在 Manager 上暴露 backup 方法(避免 Manager 锁方法 +
+  // BackupService 持机制的契约分裂)。core/wiki 路径各自独立,单一真相源。
+  getCoreDbPath(): string;
+  getWikiDbPath(): string;
+  getCoreBackupDir(): string;
+  getWikiBackupDir(): string;
 }
 ```
 
-**Plan 00 只实现 core 部分**(`core`/`open`/`close`/`health` 的 core 项/`checkpointCore`);`wiki`/`checkpointWiki`/`backupCore`/`backupWiki` 为占位,由 Plan 01/08 按此**已锁定的签名**补齐——Plan 01 不得临时改名或只补 `wiki` 字段而不补对应的 checkpoint/backup 方法,以免 core/wiki 形状不对称。Manager 统一负责打开、关闭、health、checkpoint、backup 和路径,但不提供跨库 SQL、跨库 transaction 或共享 migration。
+**backup 契约(round-1 P1-4 / round-2 review §7.1 对齐)**:Manager 是 **DB 句柄 + 路径权威 + checkpoint** owner;**backup 机制(snapshot / manifest / verify / restore)由 `WikiBackupService`(plan-08)单 owner**,经构造注入消费 Manager 的 `getCoreDbPath/getWikiDbPath/getCoreBackupDir/getWikiBackupDir` 路径 getter + 直接调 better-sqlite3 `Database.backup()`(单 owner,非 Manager 方法)。早期 plan-00 草稿曾在 Manager 上锁 `backupCore(dest)/backupWiki(dest)` 占位方法 —— 该锁定已废止(round-1 P1-4 删除占位 + 改 BackupService 单 owner),保留此说明以消解「plan 锁 Manager 方法、测试断言方法不存在」的双重契约。
+
+**Plan 00 只实现 core 部分**(`core`/`open`/`close`/`health` 的 core 项/`checkpointCore`);`wiki`/`checkpointWiki` + 4 个路径 getter 为 Plan 01 补齐(plan-01 实现 wiki open + 对称 getter),`getCoreBackupDir/getWikiBackupDir` 由 plan-08 BackupService 接线时落地。Manager 统一负责打开、关闭、health、checkpoint 和路径权威,但不提供跨库 SQL、跨库 transaction、共享 migration 或 backup 方法。
 
 ### 4. `sessions.db → db/core.db` 启动切换
 
