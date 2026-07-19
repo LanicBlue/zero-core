@@ -28,4 +28,9 @@ memory-archive-fixes sub-1 把手动归档改成「两阶段:SYNC swap + BACKGRO
 
 ## 下一步
 
-进 ② design 细化方案(`/effort design`)。核心待决策:① job 状态存哪(新轻量表 vs 复用 kv_store / telemetry-store)、暴露哪些字段与端点;② 前端指示器形态(全局 toast / session 行内 / Dashboard 卡片);③ 是否加 `/archive/retry` 手动重试入口(与 `recoverInterruptedArchives` 的关系)。**暂不实施。**
+等待 Ready、尚未实施的
+[`backend-io-scheduling`](../../plan/backend-io-scheduling/README.md) Final。它已决定提供
+通用 MaintenanceJob store、archive job 状态以及 cancel/retry/status API；本 issue 后续进
+② design 时不再新建第二套 job 表或 archive retry 真相源，只设计用户可见的归档入口、
+状态和失败操作（全局、Session 行内或 Dashboard 的具体形态）。在该 effort 实施前，本页
+描述的现状缺口仍然成立。**暂不实施。**

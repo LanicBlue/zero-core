@@ -117,6 +117,7 @@ h1{text-align:center;font-size:21px;margin-bottom:2px;background:linear-gradient
 </style>
 </head>
 <body>
+<div style="max-width:1080px;margin:0 auto 18px;padding:10px 14px;border:1px solid #d29922;border-radius:8px;color:#d29922;background:#d2992218">交互式机制快照：具体事件生产者与白名单以当前源码和 <code>docs/arch/07-renderer-and-ipc.md</code> 为准。</div>
 
 <h1>v0.8 UI 同步:data-change-hub 双路径推送</h1>
 <p class="sub">渲染层刷新机制的可视化演练 &mdash; <code>SqliteStore</code> 写原语 → 白名单/coalesce → <code>data:changed</code> WS 推送 → 各 store <strong>自订阅</strong>增量 patch</p>
@@ -142,7 +143,7 @@ h1{text-align:center;font-size:21px;margin-bottom:2px;background:linear-gradient
     <option value="single">单次写(agent 改名)</option>
     <option value="coalesce">同 tick 多写合并(批量扫描)</option>
     <option value="burst">burst 太大 → 全量 refetch</option>
-    <option value="drop">非白名单表(messages/turns)静默丢</option>
+    <option value="drop">非白名单表(messages/steps)静默丢</option>
     <option value="delete">delete 不带 record</option>
     <option value="filter">过滤列表(requirement 别项目,新 id 不在)</option>
   </select>
@@ -161,7 +162,7 @@ h1{text-align:center;font-size:21px;margin-bottom:2px;background:linear-gradient
     <div>
       <div class="lane-h s1">① 写源 SqliteStore</div>
       <div class="node" data-stage="1" data-key="agent"><span class="ln">265,311,319</span><div class="nm">emitDataChange(table,id,"delete"/"create"/"update",record?)</div><div class="ds">在 SqliteStore 三个写原语里 emit,所有领域 store 自动覆盖</div></div>
-      <div class="node" data-stage="1" data-key="drop"><span class="ln">emit→非白名单</span><div class="nm">messages / turns / tool_executions</div><div class="ds">高频写表会被 emit 但 hub 在白名单 gate 处丢弃</div></div>
+      <div class="node" data-stage="1" data-key="drop"><span class="ln">emit→非白名单</span><div class="nm">messages / steps / tool_executions</div><div class="ds">高频写表会被 emit 但 hub 在白名单 gate 处丢弃</div></div>
     </div>
     <div>
       <div class="lane-h s2">② 白名单 gate</div>
@@ -230,7 +231,7 @@ const STORES = [
 
 const COL_COLOR = {agents:"var(--blue)", projects:"var(--purple)", crons:"var(--orange)", requirements:"var(--pink)", wiki:"var(--green)"};
 const COL_CHIP  = {agents:"#58a6ff2a", projects:"#bc8cff1a", crons:"#d299221a", requirements:"#f778ba1a", wiki:"#3fb9501a"};
-const NON_UI = ["messages","turns","tool_executions","tool_usage","extraction_cursors"];
+const NON_UI = ["messages","steps","tool_executions","tool_usage","extraction_cursors"];
 
 /* ──────────────────────────────
  * 情景:每个情景是按 tick 排列的 emit 序列
@@ -270,12 +271,12 @@ const SCENARIOS = {
     note:"patch(ag-a) 返 false(refetchAll 触发,return)→ ag-b/ag-c 不再处理",
   },
   drop: {
-    name:"非白名单表(messages/turns)静默丢",
+    name:"非白名单表(messages/steps)静默丢",
     desc:"流式 LLM 每 chunk 都 append messages 表 → SqliteStore.emit → 但 messages 不在 UI_COLLECTIONS → hub 第 86 行直接 return。否则全量广播每秒几十条会把 IPC 流刷爆",
     ticks:[
       [
         {table:"messages", id:"m-101", op:"create", record:{role:"assistant",content:"..."}},
-        {table:"turns", id:"t-21", op:"create", record:{turn_group:21}},
+        {table:"steps", id:"s-21", op:"create", record:{turn_group:21}},
         {table:"tool_usage", id:"tu-9", op:"create", record:{tool:"Bash"}},
         {table:"agents", id:"ag-7", op:"update", record:{id:"ag-7",name:"x"}},  // 这个会被广播
       ],
@@ -503,7 +504,7 @@ const DETAIL = {
     tag:"gate 丢弃", cls:"warn",
     title:"① 非 UI 表的写会被 emit,但在 gate 处丢弃",
     body:`
-<p>高频写表(<code>messages</code> / <code>turns</code> / <code>tool_executions</code> / <code>tool_usage</code> / <code>extraction_cursors</code> 等)的写照样经过 <code>emitDataChange</code>,但 hub 第 86 行 <code>UI_COLLECTIONS.has(table)</code> 返 false → 直接 return,不入 pending。</p>
+<p>高频写表（<code>messages</code> / <code>steps</code> / <code>tool_executions</code> / <code>tool_usage</code> / <code>extraction_cursors</code> 等）的写入不会作为普通 UI collection 广播；具体 gate 位置以当前 <code>data-change-hub.ts</code> 为准。</p>
 <p>这是 v0.8 的关键设计取舍:<b>emit 在最底层(SqliteStore)</b>,意味着 gate 也必须在最底层就近做,否则高频表会把 IPC 通道刷爆(流式 LLM 每 chunk 一条 messages 写入 = 几十 Hz)。</p>
 <p class="src">data-change-hub.ts:85-94<br><span class="cmt">// UI_COLLECTIONS = {agents, projects, crons, requirements, project_wiki}</span></p>`,
   },

@@ -6,15 +6,15 @@
 
 ## 问题
 
-zero-core 调 LLM 时不发 `cache_control` 标记,只吃到各家**不透明的隐式 prompt cache**;对支持**显式缓存**的 provider(Anthropic / 阿里 DashScope / 火山方舟·豆包 / Moonshot Kimi)拿不到**确定性命中 + 优惠计费**(命中可省 50–90% 输入价)。
+zero-core 调 LLM 时没有构造 provider-specific 的显式 prompt cache 标记。即使某些 Provider 在服务端提供隐式缓存，应用也无法统一控制 breakpoint、TTL、命中观测或成本语义。具体厂商协议和价格变化快，进入 design 前必须以届时的官方文档重新确认。
 
 ## 现状 / 真相源 / 影响面
 
 - steps-overhaul 落地的 `Provider.cacheTtlMs`(`src/shared/types.ts` Provider 接口 + `src/runtime/hooks/compression-trigger-hooks.ts` `resolveCacheTtl` + ProviderEditor UI)只是**被动判定冷热**(距上次 LLM call > TTL → 压缩免费),**不主动构造缓存**。
-- 显式缓存要客户端在 messages/system **前缀打标记**:Anthropic `cache_control:{type:"ephemeral"}`(最多 4 个 breakpoint);阿里 `cache_control`;火山方舟 Context API;Kimi Context Caching(显式创建 + TTL)。zero-core 经 AI SDK 发请求,**未构造任何 cache_control 标记**。
-- 各家显式缓存计费(命中价 / 创建价):Anthropic 命中 ~10% 输入价;阿里显式命中 25%、创建 125%;火山/Kimi 类似。**当前长 prefix 全付全价,命中靠运气**。
+- 显式缓存通常需要在 messages/system 前缀或 provider options 中加入厂商特定字段。当前 `src/` 没有 `cache_control`/`cacheControl` 接线，但 AI SDK 与各 Provider 的透传能力仍需在 design 阶段用当前版本验证。
+- 本 issue 不记录厂商价格比例；成本收益必须用实际 Provider 账单/usage 字段测量，不能从历史宣传数字推导。
 - 天然可缓存前缀(steps-overhaul 已有):三区组装后的 `[summary] + [system prompt]` 前缀(`src/runtime/session.ts` `assembleLLMView`)——稳定、重复率高,是理想的 cache breakpoint 位置。
-- 影响面:所有长 system prompt / 长对话历史 / 压缩 summary 前缀场景,当前都付全价 + 隐式缓存不可控。
+- 影响面：长 system prompt、长历史和压缩 summary 前缀。当前确定的问题是缓存行为不可控/不可观测，不应直接断言每次请求都按全价计费。
 
 ## 下一步
 

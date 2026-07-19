@@ -141,6 +141,7 @@ h1{text-align:center;font-size:22px;margin-bottom:4px}
 </style>
 </head>
 <body>
+<div style="max-width:1100px;margin:0 auto 18px;padding:10px 14px;border:1px solid #d29922;border-radius:8px;color:#e3b341;background:#d2992218">历史可视化快照：只用于理解循环形状，不代表当前 Hook、压缩和持久化名称。当前实现请看 <code>docs/arch/03-runtime-engine.md</code>。</div>
 
 <h1>🔄 AgentLoop 循环解剖图</h1>
 <p class="sub">Hooks 与功能如何挂在循环的每个阶段 · 内联提取后的最终形态</p>
@@ -346,7 +347,7 @@ h1{text-align:center;font-size:22px;margin-bottom:4px}
     </div>
   </div>
   <div class="branches">
-    <div class="branch active"><span class="b-icon">🗜️</span><span class="b-name">compression-hooks</span><span class="b-desc">— L1 摘要 + L2 记忆提取 + turns 同步</span><span class="b-tag b-tag-side">副作用</span></div>
+    <div class="branch active"><span class="b-icon">🗜️</span><span class="b-name">compression-trigger-hooks + compression-core</span><span class="b-desc">— 滚动摘要 + cursor 推进；必要时先运行 memory turn</span><span class="b-tag b-tag-side">副作用</span></div>
   </div>
 </div>
 

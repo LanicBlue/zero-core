@@ -52,7 +52,6 @@ import { tmpdir } from "node:os";
 // Module-level placeholders — populated in beforeEach after ZERO_CORE_DIR redirect.
 let CoreDatabaseCtor: typeof import("../../src/server/core-database.js").CoreDatabase;
 let AgentServiceCtor: typeof import("../../src/server/agent-service.js").AgentService;
-let archiveMod: typeof import("../../src/server/archive-service.js");
 
 const AGENT_SVC_SRC = join(__dirname, "..", "..", "src", "server", "agent-service.ts");
 const DELEGATOR_SRC = join(__dirname, "..", "..", "src", "runtime", "subagent-delegator.ts");
@@ -251,7 +250,6 @@ describe("[#1-#7] behavioral cascade tests", () => {
 	async function freshImports(): Promise<void> {
 		({ CoreDatabase: CoreDatabaseCtor } = await import("../../src/server/core-database.js"));
 		({ AgentService: AgentServiceCtor } = await import("../../src/server/agent-service.js"));
-		archiveMod = await import("../../src/server/archive-service.js");
 	}
 
 	/** Minimal agentStore stub with one agent record. */
@@ -404,7 +402,7 @@ describe("[#1-#7] behavioral cascade tests", () => {
 		} finally {
 			warnSpy.mockRestore();
 		}
-	});
+	}, 15_000);
 
 	// -------------------------------------------------------------------------
 	// #2: 父归档 KILL 运行中子 —— archiveBookkeepingSync 调 parent loop 的

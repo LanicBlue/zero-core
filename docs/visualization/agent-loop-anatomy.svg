@@ -160,7 +160,7 @@
   <circle cx="545" cy="573" r="4" fill="#7c3aed"/>
   <rect x="650" y="552" width="280" height="44" rx="5" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.8"/>
   <text x="660" y="568" fill="#5b21b6" font-size="9" font-weight="700">⑨ PostTurnComplete ✅</text>
-  <text x="660" y="594" fill="#6d28d9" font-size="7.5">🗜️compression → L1摘要+L2记忆+turns同步</text>
+  <text x="660" y="594" fill="#6d28d9" font-size="7.5">🗜️compression → 滚动摘要+cursor推进</text>
   <text x="660" y="582" fill="#6d28d9" font-size="7.5">session.replaceMessages() · saveToDb()</text>
 
   <!-- ↓ -->
@@ -257,7 +257,7 @@
 
   <rect x="672" y="900" width="200" height="24" rx="3" fill="#f5f3ff" stroke="#7c3aed" stroke-width="0.4"/>
   <text x="678" y="914" fill="#5b21b6" font-size="7">compression-hooks</text>
-  <text x="678" y="922" fill="#6d28d9" font-size="6">→ PostTurnComplete(L1+L2+turns)</text>
+  <text x="678" y="922" fill="#6d28d9" font-size="6">→ StepEnd / PreLLMCall compression trigger</text>
 
   <rect x="42" y="932" width="830" height="24" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="0.4"/>
   <text x="48" y="946" fill="#0f766e" font-size="7.5" font-weight="600">HookRegistry 聚合: trigger()遍历handler → AggregatedHookResult · blocked=true立即中断 · last-writer-wins · 注册顺序=执行顺序</text>

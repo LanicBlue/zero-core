@@ -5,6 +5,8 @@
 - **类型**:架构 / 集成
 - **依赖**:[`../../archive/tool-decoupling/`](../../archive/tool-decoupling/)(工具纯函数化 + `exposable` + `CallerScope`)— 已合并 ✅
 
+> **实现状态（2026-07-16）**：本设计尚未进入 plan/acceptance，也未在生产入口接通外部 Agent 或 MCP host。下文“已有”只描述设计基线能力，“目标/组件”均为提案。
+
 ## 目标(本 effort 范围,用户已定)
 
 1. **外部 agent 当 subagent**:把任务委派给外部 agent 进程(Claude Code / Codex),拿回结果。

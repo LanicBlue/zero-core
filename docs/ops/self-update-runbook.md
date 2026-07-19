@@ -1,67 +1,102 @@
-# zero-core 自更新 Runbook(Claude headless 用)
+# zero-core 自更新 Runbook
 
-> 本文件是 `claude --bare -p ... --append-system-prompt <本文件>` 的内容,约束 Claude 在自更新失败时的诊断/修复行为,保证每次稳定一致。
+> 核对基线：2026-07-16，对应 `scripts/self-update.cjs`、`self-update-helper.cjs` 和 `self-update-restore.cjs`。这是高风险运维流程；不要在普通开发工作区或未确认安装路径时尝试 packaged 替换。
 
-## 你的角色
-你是 zero-core 自更新工作流的**诊断/修复** agent。确定性脚本 `scripts/self-update.cjs` 执行所有状态变更(git/build/替换/回退);你只在某步失败时介入。
+## 1. 入口与完成条件
 
-## 工作循环
-1. 跑 `node scripts/self-update.cjs --mode=packaged --platform=<mac|win|linux>`。
-2. 流式解析 stdout 的 JSON 行。
-3. 遇到 `{"step":"PX","phase":"fail","exit":N,"log":"<path>"}`:
-   - 读 `log` 文件末尾,诊断根因。
-   - 修复(见下方白名单)。
-   - 重跑(脚本幂等:每个 run 独立 `<ZERO_CORE_DIR>/update-runs/<ISO_TS>/`)。
-4. 全部 `phase=end` 且 `DONE` → 读 `<runDir>/result.json` 确认 `{ok:true}`。
+当前平台自动检测：
 
-## 允许的修复动作(白名单)
-- 改源码 `src/**/*.ts`(修类型错误、bug)。
-- 改构建配置 `tsconfig.*.json`、`electron-builder.yml`、`electron.vite.config.ts`。
-- `npm install <pkg>` 补缺失依赖。
-- 改自更新脚本 `scripts/self-update*.cjs` 自身。
-- 调整本 runbook。
+```bash
+npm run self-update:packaged
+```
 
-## 禁忌(绝对不做)
-- ❌ `rm -rf` 或删除 `<ZERO_CORE_DIR>`(用户数据)。
-- ❌ `git push`(尤其 tag)、`git reset --hard` 到非 `pre-update-*` 的 tag。
-- ❌ 跳过健康检查(P4)/ 手动改 `result.json`。
-- ❌ 直接跑 `git tag`/`npm run build`/`mv`/`ditto`/`hdiutil` —— 这些由脚本执行,你只改代码让脚本成功。
-- ❌ 触碰用户的 `sessions.db` / `wiki/` / `attachments/`。
+需要显式参数时：
 
-## 常见失败处置
+```bash
+npm run self-update:packaged -- --platform=win --install=<安装文件路径> --target=<git-ref>
+```
 
-### P0 预检(exit 10)
-- `PATH 缺少 git/npm/node`:提示用户安装或确认 PATH。
-- `无法定位安装位置`:传 `--install=<path>`,或确认运行中的 packaged zero-core 已写 `<ZERO_CORE_DIR>/runtime.install-path`。**dev 模式不写**(process.execPath 是 node_modules 的 dev electron,写了会让 P1 把它 mv 走炸 dev);只有 packaged app 运行时才写。
+macOS 的安装路径是 `.app`，Windows 是 portable `.exe`，Linux 是 `.AppImage`。`runtime.install-path` 只应由 packaged app 写入；开发模式会清理该文件，避免误把开发 Electron 当成安装产物。
 
-### P1 回退点(exit 11)
-- `mv 失败(EBUSY/文件锁)`:有进程占用安装位置。确认 zero-core 已退出(P2 的 sentinel 会优雅退出;若有残留进程占用,提示用户手动结束)。
+主脚本输出 `DONE` 只表示 detached helper 已启动，不表示更新成功。最终完成条件是对应 run 目录出现：
 
-### P2 快照(exit 12)
-- 通常因 zero-core 未完全退出、数据目录仍被写。查 `<ZERO_CORE_DIR>/.quit-requested` 是否触发、主进程是否退出。sentinel 命中后走 `will-quit`(`event.preventDefault()` → `await shutdownBackend()` 刷 WAL → `app.exit(0)`)—— Electron **不 await before-quit 的 Promise**,在 before-quit 里 await 是 fire-and-forget,刷 WAL 必须挪到 will-quit 才可靠。
+```json
+{ "ok": true }
+```
 
-### P3 构建(exit 13)
-- P3 先跑 `rebuild:native:electron`(把 better-sqlite3 编给 Electron ABI),再 build:lib+build+electron-builder,最后 finally 里跑 `rebuild:native:node` 还原 dev ABI。
-- 读 `<runDir>/build.log` 末尾。
-- `rebuild:native:electron 失败(检查编译工具链)`:better-sqlite3 没发布 Electron 43 预编译,必须本地 node-gyp 源码编译。装工具链:mac `xcode-select --install`、win 装 Visual Studio Build Tools(含 MSVC)**+ python(node-gyp 依赖;MS Store python 也行,node-gyp 查注册表能找到)**、linux `apt install make g++ python3`。
-- TypeScript 错误 → 改对应 `src/` 文件。
-- `electron-builder` 错误:mac 查 icon 路径、win 查 nsis、linux 查 AppImage 工具链。
-- `release/ 无产物` → 确认 `build:lib` + `build` 实际执行(脚本已显式跑 build:lib 补 dist/)。
-- **dev ABI 已自动还原**:P3 用 try/finally 保证无论成败都跑 `rebuild:native:node`。若仍发现 `npm run dev` 崩在 better-sqlite3 ABI,手动 `npm run rebuild:native:node`。
+即 `<ZERO_CORE_DIR>/update-runs/<timestamp>/result.json`。
 
-### P4 冒烟(exit 14)
-- `30s 未 ready`:读 `<runDir>/smoke.log`,看 backend 启动错误(常见 better-sqlite3 ABI 不匹配、fixture 格式)。
-- `health 不达标`:看返回 JSON 缺哪个字段。fixture 问题查 `src/core/test-seed.ts` 的期望格式。
-- win/linux `phase=skip`:正常(portable/AppImage 内部 backend.js 不可达),不阻塞。
+## 2. 阶段
 
-### P6(helper,result.json)
-- `{ok:false, rolledBack:true}`:新版起不来,helper 已自动回退旧版。读 `<runDir>/helper.log` 诊断新版启动失败(常见:main 崩溃、backend.js 协议不兼容、native ABI)。
+| 阶段 | 动作 | 失败码/结果 |
+| --- | --- | --- |
+| P0 | 检查 git/npm/node、参数与安装路径 | exit 10 |
+| P1 | 创建 git 回退 tag，把当前安装移动到 `previous` | exit 11 |
+| P2 | 请求应用退出并快照数据目录（可用 `--no-snapshot` 跳过） | exit 12 |
+| P3 | 重编译 native module、构建、打包、提取 staging | exit 13 |
+| P4 | staging backend 冒烟；Windows/Linux 当前可能 skip | exit 14 |
+| P5 | 写 `swap.json` 并启动 detached helper | 主脚本 exit 0 |
+| P6 | helper 替换、重启、health 验证；失败自动恢复 previous | 写 `result.json` |
 
-## 平台注意
-- **mac**:替换用 `ditto`(保签名);dmg 用 `hdiutil attach/detach`。
-- **win**:portable exe 单文件替换;运行中 exe 可 rename 不可覆盖(脚本 P1 已 rename)。
-- **linux**:AppImage 单文件 + `chmod +x`;`runtime.install-path` 用 `APPIMAGE` env(主进程 `writeInstallPath` 已处理)。
+每个 run 位于 `<ZERO_CORE_DIR>/update-runs/<timestamp>/`，常见证据包括 `preflight.json`、`rollback.json`、`build.log`、`smoke.log`、`swap.json`、`helper.log` 和 `result.json`。
 
-## 回退
-- 代码回退:`git reset --hard <pre-update-ISO_TS>`(见 `<runDir>/rollback.json` 的 tag)+ `npm run build`。
-- 数据回退(谨慎,仅在确认需要时):先退出 zero-core,再 `node scripts/self-update-restore.cjs <runDir>`。
+## 3. 诊断顺序
+
+1. 找到最新 run 目录，不要混读不同 run 的日志。
+2. 读取最后一个 `{step, phase:"fail"}` 及其 `log`。
+3. 先判断是环境、安装占用、构建、native ABI、staging 冒烟还是 P6 health。
+4. 只在用户明确授权修复后修改源码或构建配置；诊断本身不授权代码变更。
+5. 修复后重新运行完整脚本，依赖它的幂等 run 目录，不要手工伪造阶段成功。
+
+## 4. 常见失败
+
+### P0：环境或安装路径
+
+- `PATH 缺少 git/npm/node`：安装或修正 PATH。
+- `无法定位当前安装位置`：确认 packaged app 写入的 `runtime.install-path`，或显式传 `--install`。
+- 不要把 `node_modules/electron`、源码目录或普通开发 executable 当 packaged 安装位置。
+
+### P1/P2：文件占用与数据快照
+
+- 移动失败通常说明应用或杀毒软件仍占用安装文件。
+- `.quit-requested` 由 helper/脚本触发，Electron main 在退出路径关闭 backend。
+- 快照失败时不要删除用户数据目录；先确认进程退出和磁盘空间。
+
+### P3：构建与 native ABI
+
+P3 先执行 `rebuild:native:electron`，再执行 `build:lib`、`build` 和 electron-builder，最后在 `finally` 中执行 `rebuild:native:node` 恢复开发 ABI。
+
+- TypeScript/构建错误：看 `build.log` 的第一处真实错误。
+- `better-sqlite3` 编译失败：检查 Python、C/C++ 构建工具链和当前 Node/Electron ABI。
+- 找不到 release 产物：确认目标平台和 electron-builder 输出名称。
+- 更新失败后开发环境仍报 ABI 不匹配时，可运行 `npm run rebuild:native:node`。
+
+### P4：staging 冒烟
+
+- macOS 会启动 staging backend 并等待 ready/health。
+- Windows/Linux 当前可能因 portable/AppImage 内部 backend 路径不可达而 `skip`；skip 不是已验证成功。
+- 30 秒未 ready 时读取 `smoke.log`，重点检查 backend 入口、fixture、数据库和 native ABI。
+
+### P6：替换、重启与回退
+
+- `{ok:true}`：新版 health 通过。
+- `{ok:false, rolledBack:true}`：新版启动或 health 失败，helper 已尝试恢复 previous 并重启旧版。
+- 缺少 `result.json`：helper 可能中断；结合 `helper.pid`、`helper.log`、`swap.json` 和实际安装路径人工判断，不能只看主脚本 exit 0。
+
+## 5. 数据恢复
+
+安装回退不会自动回退数据快照，以避免覆盖失败窗口内的新数据。只有确认数据确实需要恢复、且 zero-core 已完全退出时，才运行：
+
+```bash
+npm run self-update:restore -- <runDir>
+```
+
+恢复脚本会先把当前数据目录改名为 `.pre-restore-<timestamp>`，再复制 run 中的 `zero-core.snapshot`。如果检测到 `sessions.db-shm`，脚本会拒绝执行。
+
+## 6. 禁止操作
+
+- 不删除 `<ZERO_CORE_DIR>`、`sessions.db`、`wiki/` 或 `attachments/`。
+- 不手工修改 `result.json`、跳过 health 或把 P4 skip 描述成验证通过。
+- 不在没有用户明确授权时执行 `git reset --hard`、强制覆盖安装或恢复数据。
+- 不在同一个 run 目录里手工拼接阶段产物；失败后启动新 run。
+- 不推送 tag/branch；自更新脚本创建的本地回退 tag 不等于发布 tag。

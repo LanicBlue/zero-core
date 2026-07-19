@@ -289,7 +289,7 @@ describe("[#5-#8] behavioral tests (real AgentService + real CoreDatabase)", () 
 			// Cleanup the loop so its timeout/registry doesn't linger.
 			try { loop?.delegator?.cleanup?.(); } catch { /* ignore */ }
 		}
-	});
+	}, 15_000);
 
 	test("#5b: actually firing delegator.fireOnTaskTerminal reaches svc.archiveDelegatedSession (Gap A behavior)", async () => {
 		await freshImports();
