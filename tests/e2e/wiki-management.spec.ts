@@ -248,11 +248,14 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 			projectId,
 			full: false,
 		});
-		// Wait for the reindex to settle.
+		// Wait for the reindex to settle. round-2 review-fix R5(3 方向验收残留):
+		// 统一用 find by projectId(旧 repositories[0] 在多项目时会取错项;§G.1 虽
+		// 单项目安全,但与 bindAndIndex 对齐避免未来 multi-project 变体重踩 §6.1)。
 		const deadline = Date.now() + 30_000;
 		while (Date.now() < deadline) {
 			const list = await apiPost(port, "/api/wiki-admin/repositories/list");
-			const entry = list?.result?.repositories?.[0];
+			const repos = list?.result?.repositories ?? [];
+			const entry = repos.find((r: any) => r.projectId === projectId);
 			if (entry?.syncStatus !== "indexing") break;
 			await new Promise((r) => setTimeout(r, 400));
 		}

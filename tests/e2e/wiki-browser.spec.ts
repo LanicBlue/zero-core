@@ -28,7 +28,9 @@
 //
 // ## 不在本测试范围
 //   - 管理 publish 流程(在 wiki-management.spec.ts)。
-//   - 真实 LLM-driven Wiki tool call(需 mock fixture,见 wiki-fresh-env test.skip)。
+//   - Agent Wiki tool-call 接线:由 tool-wiring.spec.ts 覆盖(round-2 §6.3
+//     用户批准 Choice B:fresh-env 该 skip 已删,映射到 tool-wiring 的
+//     Wiki case,加强为 expand memory:// 命中 agent memory root seed)。
 //
 // ## 维护规则
 //   - WikiPage / WikiTree / WikiDetail selector 变更同步本测试

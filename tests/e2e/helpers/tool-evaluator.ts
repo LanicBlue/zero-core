@@ -114,8 +114,16 @@ export const TOOL_CASES: ToolCase[] = [
 		toolName: "Wiki",
 		args: { action: "expand", node: "memory://" },
 		check: (text) => {
+			// round-2 review-fix R8(3 方向验收 ADVERSARIAL 残留):显式把授权失败
+			// 也当 error。旧条件只查 "error" 子串,而 ACCESS_DENIED 渲染
+			// "ACCESS_DENIED: no grant for wiki-root/memory/..." 含 "/memory" 但
+			// 不含 "error" → 旧 check 会假阳性 pass(即便 expand 实际被拒)。
+			// 现 ACCESS_DENIED / "denied" / "no grant" 一律判 error,关闭该假阳性。
 			const looksLikeError =
-				contains(text, "error") && !contains(text, "no wiki nodes match");
+				(contains(text, "error") && !contains(text, "no wiki nodes match"))
+				|| contains(text, "ACCESS_DENIED")
+				|| contains(text, "denied")
+				|| contains(text, "no grant");
 			if (looksLikeError) {
 				return { pass: false, detail: `result looks like an error: ${text.slice(0, 200)}` };
 			}

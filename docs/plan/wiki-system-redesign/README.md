@@ -1,7 +1,9 @@
 # Wiki System Redesign：实施路线图
 
 > 设计基线：[`./design.md`](./design.md)
-> 状态：✅ 独立 re-review PASS(见 [`plan-review-r2.md`](./plan-review-r2.md))—— 6 blocker 全 RESOLVED、跨文档一致;可进入实施(sub-00 watch-item 见 r2 §2)
+> 实施前计划复审：✅ PASS（见 [`plan-review-r2.md`](./plan-review-r2.md)；当时仅表示计划可进入实施）
+> 实施复审(round-1)：✅ PASS（见 [`acceptance-recommendations.md`](./acceptance-recommendations.md) + round-1 review-fix）
+> 实施复审(round-2)：✅ **PASS**（见 [`acceptance-recommendations-r2.md`](./acceptance-recommendations-r2.md) §10 用户批准 Choice B resolution + [`result-final.md`](./result-final.md)）
 > 数据策略：clean cutover，不迁移旧 Wiki 数据。
 
 ## 1. 使用方式
