@@ -3,13 +3,13 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 Agent 编辑器的 Model 下拉框选项渲染「模型名 — 上下文窗口」格式，包含 Mock Model 与 128K 上下文窗口文本
+// Verifies model dropdown metadata uses the shared 'Model Name · Context' format (Mock Model · 128K).
 //
 // ## 输入
 // simple-response.json fixture（mock provider，seed 模型 contextWindow=128000）
 //
 // ## 输出
-// Playwright 测试用例：进入 Agent 编辑器后断言 optgroup option 文本匹配 /Mock Model\s*—\s*128K/
+// Playwright asserts the first seeded Mock option renders its shared metadata suffix.
 //
 // ## 定位
 // tests/e2e/ — E2E 测试套件，验证 Agent 编辑器 Model 下拉框元数据展示
@@ -18,7 +18,7 @@
 // @playwright/test、./helpers/test-app（launchApp、waitForAppReady、selectTestAgent）
 //
 // ## 维护规则
-// 模型下拉格式变更需同步更新「ModelName — ContextK」正则断言
+// Keep the assertion aligned with modelOptionSuffix when its separator changes.
 // seed 模型上下文窗口或名称变更需更新 128K / Mock Model 文本断言
 //
 import { test, expect } from "@playwright/test";
@@ -77,7 +77,7 @@ test.describe("Model info in dropdown", () => {
 		expect(text).toContain("128K");
 	});
 
-	test("model dropdown option format is 'ModelName — ContextK'", async () => {
+	test("model dropdown option format is 'ModelName · ContextK'", async () => {
 		await navigateToAgentEditor();
 
 		const select = modelSelect();
@@ -88,6 +88,6 @@ test.describe("Model info in dropdown", () => {
 		expect(count).toBeGreaterThanOrEqual(1);
 
 		const text = await options.first().textContent();
-		expect(text).toMatch(/Mock Model\s*—\s*128K/);
+		expect(text).toMatch(/Mock Model\s*·\s*128K/);
 	});
 });

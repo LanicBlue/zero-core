@@ -21,7 +21,7 @@
 //   - 不暴露内部 DB ID。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-07-management-ui.md §4
+//   - docs/archive/wiki-system-redesign/plan-07-management-ui.md §4
 //   - src/server/wiki-admin-router.ts(context/validate|preview|publish)
 //   - src/server/wiki/wiki-context-compiler.ts(真实 compiler)
 

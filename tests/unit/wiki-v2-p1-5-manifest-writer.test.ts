@@ -799,7 +799,7 @@ describe("P1 §5.3.5 manifest — no-substitution guard: writer is ALWAYS WikiSe
 	test("SELF-CHECK: getNodeAttributes in this file is read-only (no UPDATE / .update call inside it)", () => {
 		const own = readFileSync(__filename, "utf-8");
 		// Extract getNodeAttributes function body.
-		const m = own.match(/function getNodeAttributes[\s\S]*?\n}\n/);
+		const m = own.match(/function getNodeAttributes[\s\S]*?\r?\n}\r?\n/);
 		expect(m, "getNodeAttributes must be defined in this file").not.toBeNull();
 		const body = m![0];
 		expect(body, "getNodeAttributes MUST NOT call .update()").not.toMatch(/\.update\(/);

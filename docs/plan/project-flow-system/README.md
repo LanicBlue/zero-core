@@ -1,7 +1,7 @@
 # Project Flow System：实施路线图
 
 > 状态：设计完成，尚未实施。
-> 外部前置：`wiki-system-redesign` Final PASS、用户同意合并。
+> 外部前置已满足：`wiki-system-redesign` Final PASS，并于 2026-07-19 合入 `master`（基线 `a58102d`）后归档；现在可执行 Plan 00。
 > 共同合同：[Agent Project Automation](../agent-project-automation.md)。
 
 ## 阶段

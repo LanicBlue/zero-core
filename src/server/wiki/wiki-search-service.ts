@@ -30,8 +30,8 @@
 //   - 不接受任意 cwd(source 搜索永远走 binding + workspaceDir)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-04-wiki-tool-search.md §5
-//   - docs/plan/wiki-system-redesign/design.md §8.5
+//   - docs/archive/wiki-system-redesign/plan-04-wiki-tool-search.md §5
+//   - docs/archive/wiki-system-redesign/design.md §8.5
 //   - src/shared/wiki-search-types.ts (oracle 契约)
 //   - src/server/wiki/wiki-source-search.ts (sub-03 ripgrep wrapper)
 

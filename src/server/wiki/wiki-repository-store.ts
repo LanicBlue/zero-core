@@ -22,8 +22,8 @@
 //   - 不开自动 transaction(管理 service 组合时负责)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §5.3 / §5.4
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §6
+//   - docs/archive/wiki-system-redesign/design.md §5.3 / §5.4
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §6
 
 import type Database from "better-sqlite3";
 

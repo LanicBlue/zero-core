@@ -31,7 +31,7 @@
 // 可在 module load 时直读 v2 模块的导出常量。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §5
+//   - docs/archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md §5
 //   - src/tools/wiki-v2-tool.ts(factory + schema + prompt + format)
 //   - src/server/wiki/wiki-runtime.ts(单例 getter)
 

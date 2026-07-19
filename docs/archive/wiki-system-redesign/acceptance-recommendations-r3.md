@@ -194,7 +194,7 @@ syncStatus === failed  -> 立即抛错并附 lastError
 
 ```text
 tests/e2e/wiki-fresh-env.spec.ts:404
-docs/plan/wiki-system-redesign/acceptance-recommendations-r2.md:558
+docs/archive/wiki-system-redesign/acceptance-recommendations-r2.md:558
 ```
 
 实际实现已经使用 `/api/wiki/read`。应同步改成 read，以免后续 agent 错误恢复

@@ -655,7 +655,7 @@ describe("round-2 FIX 2 — tool-level search excludes prefix-colliding siblings
 
 describe("wiki-v2 §G caller inventory — 10 old actions × migration stage [架构 lens]", () => {
 	const REPO_ROOT = resolve(__dirname, "../..");
-	const INVENTORY_PATH = join(REPO_ROOT, "docs/plan/wiki-system-redesign/caller-inventory.md");
+	const INVENTORY_PATH = join(REPO_ROOT, "docs/archive/wiki-system-redesign/caller-inventory.md");
 
 	test("inventory file exists and names all 10 old actions", () => {
 		const src = readFileSync(INVENTORY_PATH, "utf-8");

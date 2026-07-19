@@ -99,9 +99,8 @@
 
 ## 当前实施安排
 
-本计划会触及 Agent runtime、Session 服务、输入队列、任务注册、压缩和 UI，与正在另一
-worktree 实施的 `wiki-system-redesign` 有重叠。当前人工计划是等待 Wiki 最终验收并合并，
-再执行 Plan 00。
+`wiki-system-redesign` 已于 2026-07-19 最终验收并合并。当前可执行 Plan 00，并以合并后的
+Agent runtime、Session 服务、输入队列、任务注册、压缩和 UI 为唯一基线。
 
 Agent Work Runtime 的
 [Plan 02](../agent-work-runtime/plan-02-invocation-context.md) 必须消费本计划稳定

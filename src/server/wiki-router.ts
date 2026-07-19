@@ -33,8 +33,8 @@
 //   - 不接受伪造身份(body 里的 agentId/projectId/grants/callerCtx 一律忽略或拒)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-06-data-api-browser-ui.md §1
-//   - docs/plan/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §A
+//   - docs/archive/wiki-system-redesign/plan-06-data-api-browser-ui.md §1
+//   - docs/archive/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §A
 
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";

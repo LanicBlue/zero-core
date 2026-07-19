@@ -41,7 +41,7 @@ exact / substring / glob / fulltext(FTS5 external-content)/ regex(`node:worker_t
 ## 5. 修改文件(§F)
 
 commit `5bb5c81`:16 文件,+9741/-1238。
-- **新增**:`src/server/wiki/wiki-search-service.ts`、`src/shared/wiki-search-types.ts`、`src/tools/wiki-v2-tool.ts`、5 个 `tests/unit/wiki-v2-{search,regex-limits,tool-contract,tool-format,tool-auth}.test.ts`、`docs/plan/wiki-system-redesign/caller-inventory.md`
+- **新增**:`src/server/wiki/wiki-search-service.ts`、`src/shared/wiki-search-types.ts`、`src/tools/wiki-v2-tool.ts`、5 个 `tests/unit/wiki-v2-{search,regex-limits,tool-contract,tool-format,tool-auth}.test.ts`、`docs/archive/wiki-system-redesign/caller-inventory.md`
 - **改**:`src/server/wiki/wiki-node-repository.ts`(FIX1)、`src/server/wiki-operations.ts`(9-action prompt vocab,plan-04 §7)、`src/tools/types.ts`(CallerCtx.wikiAccess)、`plan-04` §5 + `acceptance-04` §D(节点语义契约 + 199/200/201 + 单节点多 matchType 边界)、`docs/visualization/code-graph.*`(regen)
 
 ## 拒绝条件(§G)

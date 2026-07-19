@@ -72,11 +72,10 @@ Electron main 当前通过全局 `ipcMain.handle` 接受调用，但 handler 忽
 - 不顺带完成 CSP、navigation、permission handler、webview sandbox 等完整 Renderer
   hardening；这些属于 [`D-015`](../../arch/10-tech-debt-architect-view.md#d-015rendererelectron-防护未系统化)。
 - 不增加逐 API 用户确认，不改变 Agent trust-first 执行策略。
-- 不修改正在另一 worktree 实施的 `wiki-system-redesign`。
+- 不回写已经合并并归档的 `wiki-system-redesign` 历史 effort。
 
 ## 当前实施安排
 
-本计划会修改 `server/index.ts`、后端启动协议和活动架构文档，与
-`wiki-system-redesign` 有重叠。因此当前人工安排是等 Wiki effort 最终验收并合并后，
-先执行 Plan 00 reconciliation，再开始实现。这个顺序不是 zero-core 已建立的 Flow
-控制，也不会由软件自动执行。
+`wiki-system-redesign` 已于 2026-07-19 最终验收并合并。当前应先执行 Plan 00，按合并后的
+`server/index.ts`、后端启动协议和活动架构文档完成 reconciliation，再开始实现。这个顺序
+不是 zero-core 已建立的 Flow 控制，也不会由软件自动执行。

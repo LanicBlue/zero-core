@@ -27,8 +27,8 @@
 //   - 不暴露 ripgrep 原始输出。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-03-project-git-mirror.md §8
-//   - docs/plan/wiki-system-redesign/design.md §8.5 mode=regex/source
+//   - docs/archive/wiki-system-redesign/plan-03-project-git-mirror.md §8
+//   - docs/archive/wiki-system-redesign/design.md §8.5 mode=regex/source
 
 import { execFile } from "child_process";
 import { existsSync, readdirSync } from "node:fs";

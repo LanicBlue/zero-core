@@ -2,7 +2,7 @@
 
 本设计服从跨 effort 的
 [Agent Project Automation 架构合同](../agent-project-automation.md)，消费已经合并的
-[`wiki-system-redesign`](../wiki-system-redesign/README.md)、
+[`wiki-system-redesign`](../../archive/wiki-system-redesign/README.md)、
 [`project-flow-system`](../project-flow-system/README.md) 与
 [`agent-work-runtime`](../agent-work-runtime/README.md) 公开 API。
 
@@ -16,7 +16,7 @@
 - Project selection 只是组件本地 state，删除操作位于全局 tab strip；
 - Dashboard/Project View 重复显示 Wiki、Requirement、Session 等摘要；
 - Project Work 的配置、触发器、Agent 分配和多个 modal 也直接内嵌在该文件；
-- `wiki-system-redesign` Plan 07 会在 Project 页面交付 Wiki 索引卡片。
+- `wiki-system-redesign` Plan 07 已在 Project 页面交付 Wiki 索引卡片。
 
 应用主窗口默认 `1400 × 900`、最小 `900 × 600`；Icon Sidebar 占 48px。因此 Project 页
 实际可用宽约为 1352px/852px，而不是完整窗口宽。布局验收必须使用这两个真实边界，并增加

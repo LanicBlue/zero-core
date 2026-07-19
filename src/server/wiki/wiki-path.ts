@@ -29,8 +29,8 @@
 //   - 不查数据库(纯函数)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §4.2（路径规范）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §3（API 形状）
+//   - docs/archive/wiki-system-redesign/design.md §4.2（路径规范）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §3（API 形状）
 
 import type { WikiErrorCode } from "../../shared/wiki-types.js";
 

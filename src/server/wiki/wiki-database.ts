@@ -30,8 +30,8 @@
 //   重复启动不改变 created_at / revision / 不产生重复行。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §3.2（PRAGMA + 独立连接）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §1（lifecycle）
+//   - docs/archive/wiki-system-redesign/design.md §3.2（PRAGMA + 独立连接）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §1（lifecycle）
 
 import Database from "better-sqlite3";
 import { dirname } from "node:path";

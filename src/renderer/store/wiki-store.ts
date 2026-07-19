@@ -32,8 +32,8 @@
 // - selectedPath / scope / showArchived
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-06-data-api-browser-ui.md §3/§7
-//   - docs/plan/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §B/§E/§H
+//   - docs/archive/wiki-system-redesign/plan-06-data-api-browser-ui.md §3/§7
+//   - docs/archive/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §B/§E/§H
 
 import { create } from "zustand";
 import type {

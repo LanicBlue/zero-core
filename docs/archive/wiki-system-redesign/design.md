@@ -1079,7 +1079,7 @@ UI 管理调用由 server 注入 admin authority，不把管理 action 暴露给
 
 ## 14. 实施阶段
 
-实施与 `docs/plan/wiki-system-redesign/README.md` 一一对应：
+实施与 `docs/archive/wiki-system-redesign/README.md` 一一对应：
 
 | Phase | 所有权与主要 contract |
 |---|---|

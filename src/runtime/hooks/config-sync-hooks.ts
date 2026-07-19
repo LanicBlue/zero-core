@@ -43,7 +43,7 @@
 // confirm 清空对应 sessionId 的队列。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §7
+//   - docs/archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md §7
 //   - src/runtime/agent-loop.ts(applyConfigUpdate 消费 patch)
 //   - src/server/agent-service.ts(pendingPatch 维护)
 

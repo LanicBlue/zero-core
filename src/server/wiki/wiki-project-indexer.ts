@@ -31,8 +31,8 @@
 //   - 不在内联 AgentLoop feature 逻辑(memory: AgentLoop hooks-only)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-03-project-git-mirror.md(全 8 节)
-//   - docs/plan/wiki-system-redesign/design.md §5.4 / §6 / §6.4
+//   - docs/archive/wiki-system-redesign/plan-03-project-git-mirror.md(全 8 节)
+//   - docs/archive/wiki-system-redesign/design.md §5.4 / §6 / §6.4
 //   - src/server/wiki/wiki-repository-store.ts(binding 表 CRUD)
 //   - src/server/wiki/wiki-node-repository.ts(node + FTS)
 //   - src/server/archivist-git.ts(Git plumbing)

@@ -3,7 +3,7 @@
 当前 Project 页面并不是一个稳定的项目管理工作台，而是从旧 Kanban 页面逐步堆叠形成的
 单体组件。源码中的 `ProjectPage.tsx` 同时承担项目选择、新建/删除、Dashboard、旧
 Requirement、Cron、Wiki、Session、资源统计和 Project Work；四个平级 tab 也无法表达
-这些能力之间的层级。`wiki-system-redesign` 还会在同一页面增加 Project Wiki 管理卡，
+这些能力之间的层级。`wiki-system-redesign` 已在同一页面增加 Project Wiki 管理卡，
 若继续由各领域直接修改这个组件，后续 Flow、Work 和外部 Agent 能力会不断争用同一布局。
 
 当前页面还把 Project rail 固定为 220px，tab body 自行滚动，并大量使用内联 geometry；
@@ -28,5 +28,5 @@ header、Studio、Graph、Work table 或 Importer 的 breakpoint、scroll owner 
 - WorkDefinition 管理、WorkRun 观察与队列操作界面；
 - 显式、无损、幂等的旧 Requirement importer 和清楚的 Legacy 边界。
 
-Wiki 管理 API、索引任务和索引卡片行为仍属于 `wiki-system-redesign`；本 effort 只在其
-最终验收并合并后，把已经成立的能力纳入统一 Project 页面，不复制实现或为其建立兼容层。
+Wiki 管理 API、索引任务和索引卡片行为已由 `wiki-system-redesign` 交付；本 effort 只把
+已经成立的能力纳入统一 Project 页面，不复制实现或为其建立兼容层。

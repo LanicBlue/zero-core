@@ -72,7 +72,7 @@ Orchestrate, Project, Work, AgentRegistry, Cron, Wiki, Flow, Platform
 - 不训练或微调模型。
 - 不承诺所有外部 Skill/MCP/脚本都安全；本地执行能力本身具有高权限风险。
 - 不替代完整 IDE。
-- `docs/plan/wiki-system-redesign/` 是未来重构计划，不代表当前数据库和 API 已完成切换。
+- `docs/archive/wiki-system-redesign/` 是已完成并合并的历史实施记录；当前 Wiki 数据库与 API 事实以源码、`docs/basic/` 和 `docs/arch/` 为准。
 
 ## 质量基线
 

@@ -2,9 +2,8 @@
 
 > 设计基线：[design.md](./design.md)
 > 状态：计划已于 2026-07-18 经用户确认完成，进入 **Ready**；尚未实施。
-> 当前实施安排：等待
-> [`wiki-system-redesign`](../wiki-system-redesign/README.md) 最终验收并合并后，从 Plan 00
-> 开始。该顺序是人工/文档门禁，不表示 zero-core 已建立对应 FlowDependency。
+> Wiki 外部门禁已满足：Final PASS，已于 2026-07-19 合入 `master`（基线 `a58102d`）并归档。
+> 现在可从 Plan 00 开始；该顺序仍是人工/文档门禁，不表示 zero-core 已建立对应 FlowDependency。
 
 ## 1. 目标
 

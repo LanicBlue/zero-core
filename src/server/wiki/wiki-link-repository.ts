@@ -21,8 +21,8 @@
 //   - 不开自动 transaction(调用方组合节点 + audit 写入时负责)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §5.2（wiki_links DDL）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §6（范围）
+//   - docs/archive/wiki-system-redesign/design.md §5.2（wiki_links DDL）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §6（范围）
 
 import type Database from "better-sqlite3";
 

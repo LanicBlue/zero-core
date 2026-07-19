@@ -1,9 +1,10 @@
 # Issue: session-summary-restart-integrity
 
-- **状态**：① issues（问题记录）
+- **状态**：已被 `memory-compaction-runtime` 吸收，作为历史问题记录归档
 - **提出**：2026-07-17
+- **重核**：2026-07-19，Wiki redesign 合并后问题仍存在
 - **类型**：缺陷（P0 数据完整性）
-- **依赖**：[`wiki-system-redesign`](../../plan/wiki-system-redesign/README.md) 完成并合并后重新核验
+- **归属**：由 [`memory-compaction-runtime`](../../plan/memory-compaction-runtime/README.md) Plan 00 / 05 统一修复和验收
 
 ## 问题
 
@@ -49,6 +50,11 @@
 - 不尝试恢复此前已经被启动流程删除、且没有备份的摘要数据。
 - 不把完整 schema 治理、跨数据库事务或 Wiki 数据迁移并入本 issue。
 
-## 下一步
+## 2026-07-19 合并后重核
 
-等待 `wiki-system-redesign` 完成并合并。合并后先执行源码审计和最小 reopen 复现：写入一条摘要及非空压缩游标，关闭数据库连接，再以同一路径初始化并读取；只有确认问题仍存在，才把整个 effort 移入 `docs/design/` 讨论修复与迁移策略。
+`wiki-system-redesign` 已合并，但 `SessionDB.initSchema()` 仍会无条件删除并重建
+`messages` 表，且尚无摘要/游标 reopen 回归测试，问题没有被 Wiki effort 顺带消除。
+
+该缺陷已经由 `memory-compaction-runtime` 的 Plan 00 基线重核和 Plan 05 原子提交/
+重启恢复明确覆盖，不再建立一个会争夺同一 schema、runtime 和测试文件的独立 effort。
+本目录因此归档为被替代的问题记录；修复状态以后以该 plan 的 result 和 acceptance 为准。

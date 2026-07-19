@@ -25,8 +25,8 @@
 //   - 不实现 deny / visibility / 节点 ACL / 继承（plan-02 第一版 allowlist only）。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-02-core-service-address-auth.md §3
-//   - docs/plan/wiki-system-redesign/design.md §7.3
+//   - docs/archive/wiki-system-redesign/plan-02-core-service-address-auth.md §3
+//   - docs/archive/wiki-system-redesign/design.md §7.3
 
 import type {
 	CompiledWikiAccess,

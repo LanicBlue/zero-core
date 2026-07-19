@@ -35,8 +35,8 @@
 //   - 字段:`node / parent / source / target / newParent`(逻辑地址或 canonical)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-04-wiki-tool-search.md §1-§4
-//   - docs/plan/wiki-system-redesign/design.md §8
+//   - docs/archive/wiki-system-redesign/plan-04-wiki-tool-search.md §1-§4
+//   - docs/archive/wiki-system-redesign/design.md §8
 
 import { z } from "zod";
 import { buildTool, type BuildToolOptions } from "./tool-factory.js";

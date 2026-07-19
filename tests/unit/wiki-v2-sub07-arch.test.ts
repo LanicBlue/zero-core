@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 对照 docs/plan/wiki-system-redesign/design.md 的管理面/数据面分离、authority
+// 对照 docs/archive/wiki-system-redesign/design.md 的管理面/数据面分离、authority
 // server-injected、canonical path、CAS publish、session refresh 安全边界 契约,
 // 以 architecture 方向独立验证 sub-07 实现(plan-07 §1–§7 / acceptance-07 §A–§H)。
 //
@@ -38,8 +38,8 @@
 // 不开 better-sqlite3 / temp DB —— 只 express + mock + AgentService(无 DB),无崩溃面。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §3.1 / §7.4 / §9.3 / §10.2
-//   - docs/plan/wiki-system-redesign/acceptance-07-management-ui.md §A/§B/§H
+//   - docs/archive/wiki-system-redesign/design.md §3.1 / §7.4 / §9.3 / §10.2
+//   - docs/archive/wiki-system-redesign/acceptance-07-management-ui.md §A/§B/§H
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";

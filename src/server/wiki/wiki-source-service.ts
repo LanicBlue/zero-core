@@ -24,8 +24,8 @@
 //   - 不在 indexed mode 走磁盘(总是 git show,跨 worktree 安全)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-03-project-git-mirror.md §7
-//   - docs/plan/wiki-system-redesign/design.md §6.4 view="source"
+//   - docs/archive/wiki-system-redesign/plan-03-project-git-mirror.md §7
+//   - docs/archive/wiki-system-redesign/design.md §6.4 view="source"
 //   - src/server/wiki/wiki-repository-store.ts(binding 查询)
 //   - src/server/archivist-git.ts(cat-file plumbing)
 

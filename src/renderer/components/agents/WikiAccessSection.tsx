@@ -29,7 +29,7 @@
 //   - 不暴露内部 DB ID(target_id / nodeId)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-07-management-ui.md §3
+//   - docs/archive/wiki-system-redesign/plan-07-management-ui.md §3
 //   - src/server/wiki-admin-router.ts(grants/validate|preview|publish)
 //   - src/server/wiki/wiki-access-compiler.ts(真实 compiler)
 

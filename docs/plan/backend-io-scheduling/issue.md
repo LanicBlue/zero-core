@@ -75,7 +75,7 @@ crash recovery 语义。已有 [`archive-observability`](../../issues/archive-ob
 
 ## 当前实施安排
 
-该 effort 必须等待 `wiki-system-redesign` 最终验收并合并，然后由 Plan 00 在合并后源码上
+`wiki-system-redesign` 已于 2026-07-19 最终验收并合并，当前可由 Plan 00 在合并后源码上
 重新测量。它与 `local-backend-security-boundary` 共享 backend startup/readiness 文件，
 与 `session-turn-lifecycle` 共享 archive/background integration 文件；这些是合并协调关系，
-不是产品语义依赖。不得从 Wiki 旧基线或当前并行 worktree 开始写实现。
+不是产品语义依赖。不得从 Wiki 合并前的旧基线开始写实现。

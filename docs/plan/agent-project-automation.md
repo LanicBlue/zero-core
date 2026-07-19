@@ -596,9 +596,9 @@ milestone 由 prerequisite 的 FlowDefinition 定义，而不是核心写死 `cl
 - prerequisite transition 后由反向索引重算 dependent 并幂等发事件；漏发使用与
   transition event 相同的 reconcile/outbox 机制。
 
-这组 effort 当前先等待 `wiki-system-redesign` 的顺序只是外部工作安排，并不存在于
-zero-core 的 dependency graph 中。Project Flow System Plan 00 只在实施开始时核对该
-事实，不是 Flow 门禁，
+这组 effort 曾等待 `wiki-system-redesign` 的顺序只是外部工作安排，并不存在于
+zero-core 的 dependency graph 中；该安排已于 2026-07-19 随 Wiki 合并满足。
+Project Flow System Plan 00 只核对合并后的事实，不是 Flow 门禁，
 也不创建控制状态。引擎落地后，用户或 Agent 可以在软件运行时显式创建未来任务的
 FlowDependency；系统不会自动把计划文字导入为依赖。
 

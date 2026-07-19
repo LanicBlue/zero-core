@@ -27,7 +27,8 @@
 //   - 新建项目默认填值逻辑变更 → 同步 handleCreate
 //
 import { test, expect } from "@playwright/test";
-import { resolve, dirname } from "node:path";
+import { mkdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchApp, waitForAppReady } from "./helpers/test-app.js";
 
@@ -38,10 +39,12 @@ const FIXTURE = resolve(__dirname, "fixtures/simple-response.json");
 test.describe("Project page (P5 §8.5)", () => {
 	let cleanup: () => Promise<void>;
 	let window: Awaited<ReturnType<typeof launchApp>>["window"];
+	let zeroDir: string;
 
 	test.beforeEach(async () => {
 		const app = await launchApp(FIXTURE);
 		window = app.window;
+		zeroDir = app.zeroDir;
 		cleanup = app.cleanup;
 		await waitForAppReady(window);
 	});
@@ -112,15 +115,19 @@ test.describe("Project page (P5 §8.5)", () => {
 
 		// Open the modal.
 		await window.getByRole("button", { name: "+ New Project" }).click({ timeout: 10_000 });
-		// Modal heading.
-		await expect(window.getByText("New Project", { exact: false }).first()).toBeVisible({ timeout: 5_000 });
+		// Modal fields, scoped by their unique placeholders so unrelated hidden
+		// inputs elsewhere in the mounted application cannot steal nth(0/1).
+		const nameInput = window.getByPlaceholder("my-project");
+		const workspaceInput = window.getByPlaceholder("/path/to/workspace");
+		await expect(nameInput).toBeVisible({ timeout: 5_000 });
+		await expect(workspaceInput).toBeVisible({ timeout: 5_000 });
 
 		// Fill the form. Workspace dir is required (immutable after creation);
 		// point it at the test's own zero dir so it's a real path.
-		const inputs = window.locator("input");
-		await inputs.nth(0).fill("E2EProj");
-		await inputs.nth(1).fill(process.cwd() + "/e2e-fixture-ws");
-
+		const workspaceDir = join(zeroDir, "e2e-fixture-ws");
+		mkdirSync(workspaceDir, { recursive: true });
+		await nameInput.fill("E2EProj");
+		await workspaceInput.fill(workspaceDir);
 		// Submit (the modal's Create button, NOT the toolbar's + New Project).
 		await window.getByRole("button", { name: "Create", exact: true }).click({ timeout: 10_000 });
 

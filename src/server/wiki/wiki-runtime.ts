@@ -22,7 +22,7 @@
 //   Wiki 调用失败(测试环境 / headless 路径需注意)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §5
+//   - docs/archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md §5
 //   - src/tools/wiki-v2-tool.ts(factory)
 //   - src/server/index.ts(注册点)
 

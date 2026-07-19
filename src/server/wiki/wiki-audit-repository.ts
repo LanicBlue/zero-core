@@ -22,8 +22,8 @@
 //   - 不做 actor 授权校验(管理面职责)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §5.6（DDL + 幂等语义）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §6
+//   - docs/archive/wiki-system-redesign/design.md §5.6（DDL + 幂等语义）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §6
 
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";

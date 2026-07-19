@@ -29,7 +29,7 @@
 //   - 不暴露 repository 本地绝对路径以外的字段。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-07-management-ui.md §5
+//   - docs/archive/wiki-system-redesign/plan-07-management-ui.md §5
 //   - src/server/wiki-admin-router.ts(repositories/* endpoints)
 
 import React, { useEffect, useState, useCallback } from "react";

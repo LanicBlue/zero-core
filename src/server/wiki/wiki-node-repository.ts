@@ -31,8 +31,8 @@
 //   - 不开 trigger(已禁用)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §5.1（wiki_nodes / FTS）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §6（范围）
+//   - docs/archive/wiki-system-redesign/design.md §5.1（wiki_nodes / FTS）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §6（范围）
 
 import type Database from "better-sqlite3";
 import type { WikiNodeKind } from "../../shared/wiki-types.js";

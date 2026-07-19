@@ -25,8 +25,8 @@
 //     （`WHERE archived_at IS NULL`）,允许归档后同路径重建。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §5（DDL 权威来源）
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §2（schema 要求）
+//   - docs/archive/wiki-system-redesign/design.md §5（DDL 权威来源）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §2（schema 要求）
 
 import type Database from "better-sqlite3";
 

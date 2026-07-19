@@ -27,8 +27,8 @@
 //     是 `compileWikiAccess(opts)` 的显式参数。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §4
-//   - docs/plan/wiki-system-redesign/design.md §7.2
+//   - docs/archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md §4
+//   - docs/archive/wiki-system-redesign/design.md §7.2
 
 import type {
 	CompiledWikiAccess,

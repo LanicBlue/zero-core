@@ -20,9 +20,9 @@
 //   - view 类型字段调整:保持可选字段可演进,但不要塞内部 ID。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §4–§5(路径/节点/表)
-//   - docs/plan/wiki-system-redesign/design.md §8(工具 action / ToolResult / 错误码闭集)
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §4(本文件范围)
+//   - docs/archive/wiki-system-redesign/design.md §4–§5(路径/节点/表)
+//   - docs/archive/wiki-system-redesign/design.md §8(工具 action / ToolResult / 错误码闭集)
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §4(本文件范围)
 
 // ---------------------------------------------------------------------------
 // WikiNodeKind — v1 closed set (design.md §5.1)

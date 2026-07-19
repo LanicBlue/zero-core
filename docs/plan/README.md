@@ -4,22 +4,24 @@
 本页是实施 Agent 的选择入口；进入具体 effort 后仍必须阅读其 issue、design、README、
 当前 plan/acceptance 和已有 result。
 
-> 核对日期：2026-07-18。下列依赖是当前人工/文档交接约束，不表示 zero-core 已经创建
+> 核对日期：2026-07-19。下列依赖是当前人工/文档交接约束，不表示 zero-core 已经创建
 > FlowDependency、FlowInstance 或自动执行门禁。
 
 ## 1. 当前选择结论
 
 | Effort | 状态 | 现在能否新开实施 | 首个外部前置 |
 |---|---|---:|---|
-| [`wiki-system-redesign`](wiki-system-redesign/README.md) | 另一 worktree 实施中 | 只由既有实施工作继续 | 无 |
-| [`backend-io-scheduling`](backend-io-scheduling/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
-| [`session-turn-lifecycle`](session-turn-lifecycle/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
-| [`memory-compaction-runtime`](memory-compaction-runtime/README.md) | Ready，未实施 | 否 | Wiki Final + Session Lifecycle Final |
-| [`local-backend-security-boundary`](local-backend-security-boundary/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
-| [`project-flow-system`](project-flow-system/README.md) | Ready，未实施 | 否 | Wiki Final PASS + merge |
+| [`wiki-system-redesign`](../archive/wiki-system-redesign/README.md) | Final PASS，已合并并归档 | 已完成 | 无 |
+| [`backend-io-scheduling`](backend-io-scheduling/README.md) | Ready，未实施 | **是：Plan 00** | 已满足（Wiki） |
+| [`session-turn-lifecycle`](session-turn-lifecycle/README.md) | Ready，未实施 | **是：Plan 00** | 已满足（Wiki） |
+| [`memory-compaction-runtime`](memory-compaction-runtime/README.md) | Ready，未实施 | 否 | Session Lifecycle Final（Wiki 已满足） |
+| [`local-backend-security-boundary`](local-backend-security-boundary/README.md) | Ready，未实施 | **是：Plan 00** | 已满足（Wiki） |
+| [`project-flow-system`](project-flow-system/README.md) | Ready，未实施 | **是：Plan 00** | 已满足（Wiki） |
 | [`agent-work-runtime`](agent-work-runtime/README.md) | Ready，未实施 | 否 | Project Flow Final + Session Lifecycle Final |
-| [`project-management-ui`](project-management-ui/README.md) | Ready，未实施 | 否 | Wiki Final + Project Flow Final；Plan 04 起另需 Work Final |
+| [`project-management-ui`](project-management-ui/README.md) | Ready，未实施 | 否 | Project Flow Final；Plan 04 起另需 Work Final（Wiki 已满足） |
 | [`agent-eval-harness`](agent-eval-harness/README.md) | Ready，未实施 | 否 | Project Flow Final + Agent Work Runtime Final |
+
+Wiki redesign 已在本地 `master` 快进到 `a58102d` 并归档；其 Final result 见 `docs/archive/wiki-system-redesign/`。Backend I/O、Session Lifecycle、Local Backend Security 与 Project Flow 的 Wiki 人工门禁现已满足。
 
 原 `agent-eval-harness` 大 effort 已拆为后四项。共同职责和端到端合同见
 [Agent Project Automation](agent-project-automation.md)，最终执行
@@ -29,7 +31,7 @@
 ## 2. Effort 依赖图
 
 ```text
-wiki-system-redesign FINAL + merge
+wiki-system-redesign FINAL + merge（已满足：a58102d）
 ├──→ backend-io-scheduling FINAL
 ├──→ session-turn-lifecycle FINAL ───────────┐
 │    └──→ memory-compaction-runtime FINAL     │
@@ -84,7 +86,7 @@ wiki-system-redesign FINAL + merge
 若只能串行安排一个实施 Agent，默认建议：
 
 ```text
-Wiki merge
+Wiki merge（已完成：`a58102d`）
 → Backend I/O Scheduling
 → Session Lifecycle
 → Memory Compaction Runtime
@@ -102,7 +104,7 @@ Backend I/O、Project Flow 与 Session 的先后可按 owner 冲突调整；Eval
 ## 4. 并行与冲突边界
 
 - 每个 effort 使用独立 worktree/分支。
-- Wiki 未合并前，所有后续 effort 都不得按旧 Core DB、Runtime、CallerCtx、文件保护或
+- Wiki 已合并；后续 effort 不得从合并前分支按旧 Core DB、Runtime、CallerCtx、文件保护或
   Project UI 接口编码。
 - Session Lifecycle 与 Project Flow 可并行，但不得相互提前建立兼容层；Work Runtime
   Plan 00 以两者 Final 的真实接口统一接线。

@@ -8,7 +8,7 @@
 
 ## 当前实施前置
 
-- `docs/plan/wiki-system-redesign/result-final.md` 存在且结论 PASS。
+- `docs/archive/wiki-system-redesign/result-final.md` 存在且结论 PASS。
 - 用户已同意将该 effort 合并到本 effort 的目标主分支。
 - 当前 checkout 包含该合并 commit，不得从旧 main 或其并行 worktree 开始。
 

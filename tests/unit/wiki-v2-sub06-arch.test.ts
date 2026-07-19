@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 对照 docs/plan/wiki-system-redesign/design.md 的数据面 / UI 权威 / canonical
+// 对照 docs/archive/wiki-system-redesign/design.md 的数据面 / UI 权威 / canonical
 // path / 增量同步 契约,以 architecture 方向独立验证 sub-06 实现:
 //
 //   1. REST adapter 是薄层 —— 9 个 POST endpoint 全部委托给 WikiService /
@@ -45,8 +45,8 @@
 // 本文件**不**开 better-sqlite3 / temp DB —— 只跑 express + mock,无 DB 崩溃面。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §3.1 / §7.4 / §10.2 / §10.3 / §11
-//   - docs/plan/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §A/§E/§H
+//   - docs/archive/wiki-system-redesign/design.md §3.1 / §7.4 / §10.2 / §10.3 / §11
+//   - docs/archive/wiki-system-redesign/acceptance-06-data-api-browser-ui.md §A/§E/§H
 
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";

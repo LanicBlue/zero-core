@@ -42,7 +42,7 @@ acceptance §F 的 `test:e2e` / `npm run build` / **1M benchmark** 由 acceptanc
 
 ## 4. 修改文件
 
-**新建**:`src/core/protected-paths.ts`、`src/server/{wiki-backup-service,wiki-maintenance-router}.ts`、`scripts/wiki-benchmark.ts`、`tests/e2e/wiki-fresh-env.spec.ts`、`docs/plan/wiki-system-redesign/bench-100k.json`、3 个 sub-08 测试。**删除**:project-wiki-router/store、wiki-node-store 等 legacy。**修改**:db-migration、index、data-change-hub、project-work-hook-manager、ProjectPage、AgentEditor/agent-editor-types、runtime/types、shared/types、tools(file-read/write/edit/grep/glob/wiki-path-guard)、agent-service(B6)、CronDashboard(E7)、wiki-admin-router(audit-query)、docs/arch/{04,05,06,07,08,12} + code-graph.* regen。**E4 外科恢复**:p0-startup/m5-extractors/m4-pm-service/m4-pm-tool。
+**新建**:`src/core/protected-paths.ts`、`src/server/{wiki-backup-service,wiki-maintenance-router}.ts`、`scripts/wiki-benchmark.ts`、`tests/e2e/wiki-fresh-env.spec.ts`、`docs/archive/wiki-system-redesign/bench-100k.json`、3 个 sub-08 测试。**删除**:project-wiki-router/store、wiki-node-store 等 legacy。**修改**:db-migration、index、data-change-hub、project-work-hook-manager、ProjectPage、AgentEditor/agent-editor-types、runtime/types、shared/types、tools(file-read/write/edit/grep/glob/wiki-path-guard)、agent-service(B6)、CronDashboard(E7)、wiki-admin-router(audit-query)、docs/arch/{04,05,06,07,08,12} + code-graph.* regen。**E4 外科恢复**:p0-startup/m5-extractors/m4-pm-service/m4-pm-tool。
 
 ## 拒绝条件(§H)
 

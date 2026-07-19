@@ -10,7 +10,7 @@
 //   → compile Prompt → Agent Wiki tool call (mock fixture) → UI browse/search/edit
 //   → Git rename + sync → snapshot → reopen + restore
 //
-// 验收对应 [acceptance-08 §7](../../docs/plan/wiki-system-redesign/acceptance-08-cutover-hardening.md)。
+// 验收对应 [acceptance-08 §7](../../docs/archive/wiki-system-redesign/acceptance-08-cutover-hardening.md)。
 //
 // ## 设计约束(plan-08 §7)
 //   - **所有路径从应用正式入口执行,不只直接调 service**。这意味着:

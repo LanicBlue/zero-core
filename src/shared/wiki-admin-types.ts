@@ -24,7 +24,7 @@
 //   - 不暴露内部 DB 整数 ID(target_id / project_node_id)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-07-management-ui.md §1
+//   - docs/archive/wiki-system-redesign/plan-07-management-ui.md §1
 //   - src/server/wiki-admin-router.ts
 
 import type { WikiGrant, WikiContextEntry } from "./types.js";

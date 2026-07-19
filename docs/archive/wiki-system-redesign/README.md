@@ -1,5 +1,7 @@
 # Wiki System Redesign：实施路线图
 
+> 归档状态：✅ Final PASS；用户同意后于 2026-07-19 fast-forward 合入本地 `master`（基线 `a58102d`），随后移入 `docs/archive/`。
+> 合并后收尾与完整绿线：[`result-merge-closeout.md`](./result-merge-closeout.md)。
 > 设计基线：[`./design.md`](./design.md)
 > 实施前计划复审：✅ PASS（见 [`plan-review-r2.md`](./plan-review-r2.md)；当时仅表示计划可进入实施）
 > 实施复审(round-1)：✅ PASS（见 [`acceptance-recommendations.md`](./acceptance-recommendations.md) + round-1 review-fix）

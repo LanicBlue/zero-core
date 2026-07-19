@@ -17,7 +17,7 @@
 // FileTreePanel renders against chat/agent/page stores with heavy state; rather
 // than stand up the whole tree, we assert the SOURCE contract (no setInterval
 // token; manual refresh path present) plus a behavioural mirror of the
-// fetchTree({force}) gate. This mirrors N2's "source uses EMPTY_ANCHORS" style
+// fetchTree({force}) gate. This follows the suite's source-contract style
 // for components that aren't cleanly renderable under node/jsdom.
 //
 // LogViewer only needs window.api, so we render it for real via createRoot/act
@@ -40,8 +40,9 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
+import { resolve } from "node:path";
 
-const ROOT = "C:/Users/Administrator/Documents/workspace/agent/zero-core";
+const ROOT = resolve(__dirname, "../..");
 const FILE_TREE = `${ROOT}/src/renderer/components/layout/FileTreePanel.tsx`;
 const LOG_VIEWER = `${ROOT}/src/renderer/components/common/LogViewer.tsx`;
 const CRON_DASH = `${ROOT}/src/renderer/components/cron/CronDashboard.tsx`;

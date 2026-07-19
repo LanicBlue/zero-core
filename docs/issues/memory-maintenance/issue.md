@@ -5,7 +5,7 @@
 - **类型**:改进(记忆质量 / 机制)
 - **来源**:2026-07-15 每日扫描建议(方向 2)
 
-> **⚠️ 现状校正（2026-07-18，wiki-system-redesign cutover 后）**：本 issue 撰写于 cutover 前,下文 legacy 记忆主干描述(`wiki-root:memory-agent:<agentId>` 寻址 / `wiki-node-store.ts` `ensureMemoryAgentRoot` / `project_wiki` 表列)均**已被超越(overtaken)**。当前唯一长期记忆主干是 `db/wiki.db` 的 `wiki-root/memory/<agentId>` 子树(canonical path + `memory://` 逻辑地址 + `memory_type` / `durability` / `confidence` / `review_after` attributes + FTS5)。本 issue 的**核心关切——memory maintenance（dedup / consolidation / conflict resolution / forgetting）——依然有效且适用**于新 wiki.db 记忆子树;只是落地机制需基于 `wiki_nodes` 表(可扩 `last_accessed` / `access_count` 列 + 复用 Wiki 工具读侧埋点),而非已删的 `project_wiki`。详见 [docs/plan/wiki-system-redesign/](../../plan/wiki-system-redesign/)。下文凡 `project_wiki` / `wiki-node-store` / `wiki-root:memory-agent:` 描述按**历史问题陈述**理解,不代表当前架构。
+> **⚠️ 现状校正（2026-07-18，wiki-system-redesign cutover 后）**：本 issue 撰写于 cutover 前,下文 legacy 记忆主干描述(`wiki-root:memory-agent:<agentId>` 寻址 / `wiki-node-store.ts` `ensureMemoryAgentRoot` / `project_wiki` 表列)均**已被超越(overtaken)**。当前唯一长期记忆主干是 `db/wiki.db` 的 `wiki-root/memory/<agentId>` 子树(canonical path + `memory://` 逻辑地址 + `memory_type` / `durability` / `confidence` / `review_after` attributes + FTS5)。本 issue 的**核心关切——memory maintenance（dedup / consolidation / conflict resolution / forgetting）——依然有效且适用**于新 wiki.db 记忆子树;只是落地机制需基于 `wiki_nodes` 表(可扩 `last_accessed` / `access_count` 列 + 复用 Wiki 工具读侧埋点),而非已删的 `project_wiki`。详见 [docs/archive/wiki-system-redesign/](../../archive/wiki-system-redesign/)。下文凡 `project_wiki` / `wiki-node-store` / `wiki-root:memory-agent:` 描述按**历史问题陈述**理解,不代表当前架构。
 
 ## 问题
 

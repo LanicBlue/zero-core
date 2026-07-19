@@ -21,8 +21,8 @@
 //   - 新增 mode/target 字段:先改 design + acceptance,再改本文件。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-04-wiki-tool-search.md §5
-//   - docs/plan/wiki-system-redesign/design.md §8.5
+//   - docs/archive/wiki-system-redesign/plan-04-wiki-tool-search.md §5
+//   - docs/archive/wiki-system-redesign/design.md §8.5
 
 import type { WikiNodeKind } from "./wiki-types.js";
 

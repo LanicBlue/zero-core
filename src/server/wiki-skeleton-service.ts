@@ -42,7 +42,7 @@
 //     fallback helper,无调用方,已删除。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-03-project-git-mirror.md §6
+//   - docs/archive/wiki-system-redesign/plan-03-project-git-mirror.md §6
 //   - src/server/wiki/wiki-project-indexer.ts(新 indexer)
 
 import type { WikiProjectIndexer, IndexResult, SyncResult } from "./wiki/wiki-project-indexer.js";

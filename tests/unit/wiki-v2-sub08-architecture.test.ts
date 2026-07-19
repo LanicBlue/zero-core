@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 对照 docs/plan/wiki-system-redesign/design.md + plan-08 §7「release gate 原子性」
+// 对照 docs/archive/wiki-system-redesign/design.md + plan-08 §7「release gate 原子性」
 // + acceptance-08 §A/§B/§C/§D/§E/§H,从 architecture 方向独立验证 sub-08 实现。
 //
 // 重点(orchestrator 诊断):**运行时断言而非只 grep 文件名**(acceptance H)。
@@ -35,9 +35,9 @@
 //   - express server listen(0) 用完即 close,不留监听。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/design.md §3.1 / §5.1 / §9.3 / §13
-//   - docs/plan/wiki-system-redesign/plan-08-cutover-hardening.md §1–§7
-//   - docs/plan/wiki-system-redesign/acceptance-08-cutover-hardening.md §A/§B/§C/§D/§H
+//   - docs/archive/wiki-system-redesign/design.md §3.1 / §5.1 / §9.3 / §13
+//   - docs/archive/wiki-system-redesign/plan-08-cutover-hardening.md §1–§7
+//   - docs/archive/wiki-system-redesign/acceptance-08-cutover-hardening.md §A/§B/§C/§D/§H
 
 import { describe, test, expect, beforeAll, afterAll, vi } from "vitest";
 
@@ -664,7 +664,7 @@ describe("[C] backup service — Backup API + Core/Wiki isolation", () => {
 
 describe("[D] benchmark — EXPLAIN assertions real + report complete + 1M supported", () => {
 	test("D1. bench-100k.json exists with all required provenance fields", () => {
-		const report = JSON.parse(readRaw("docs/plan/wiki-system-redesign/bench-100k.json"));
+		const report = JSON.parse(readRaw("docs/archive/wiki-system-redesign/bench-100k.json"));
 		// acceptance-08 §D: report must carry commit SHA + hardware + data gen params.
 		expect(typeof report.commitSha).toBe("string");
 		expect(report.commitSha.length).toBeGreaterThan(0);
@@ -679,7 +679,7 @@ describe("[D] benchmark — EXPLAIN assertions real + report complete + 1M suppo
 	});
 
 	test("D2. every scenario asserted an index/FTS plan (no full-table scan)", () => {
-		const report = JSON.parse(readRaw("docs/plan/wiki-system-redesign/bench-100k.json"));
+		const report = JSON.parse(readRaw("docs/archive/wiki-system-redesign/bench-100k.json"));
 		expect(report.allPlansOk, "allPlansOk must be true").toBe(true);
 		expect(report.results.length).toBeGreaterThanOrEqual(6); // S1..S6 (S3 split a/b)
 		for (const r of report.results) {

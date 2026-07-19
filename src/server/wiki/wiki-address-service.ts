@@ -31,8 +31,8 @@
 //   - 不做 Agent grants 判定（authorization service 职责）。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-02-core-service-address-auth.md §2
-//   - docs/plan/wiki-system-redesign/design.md §5.3 + §8.2
+//   - docs/archive/wiki-system-redesign/plan-02-core-service-address-auth.md §2
+//   - docs/archive/wiki-system-redesign/design.md §5.3 + §8.2
 
 import type { WikiAddressRow } from "./wiki-repository-store.js";
 import { WikiAddressTable } from "./wiki-repository-store.js";

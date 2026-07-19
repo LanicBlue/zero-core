@@ -10,7 +10,7 @@
 > / `MemoryNodeStore` 等模块**已物理删除**(plan-08 §1);旧 `project_wiki` 表保留为
 > 未读取的历史表(不迁移)。下文凡是描述旧模型的部分都需对照
 > [06-knowledge-subsystems.md](06-knowledge-subsystems.md) §Wiki-v2 与
-> [plan-01-database-contracts.md](../plan/wiki-system-redesign/plan-01-database-contracts.md)
+> [plan-01-database-contracts.md](../archive/wiki-system-redesign/plan-01-database-contracts.md)
 > 阅读新实现。
 >
 > Zero-Core 是"本地优先"系统。用户数据主要落在 `~/.zero-core/` 下的几个文件里:**主库
@@ -31,7 +31,7 @@
 ```
 ~/.zero-core/
 ├── db/core.db            ← 主数据库 (CoreDatabase,better-sqlite3,§2 全部表 ≈25 张 = 批 A db-migration 管理 23 张 [5 会话核心 + 4 旧业务实体 + 14 v0.8 工作流域] + 批 B 构造自建 2 张 [kv_store + extraction_cursors + tool_telemetry 中 db-migration 未管的];v0.8 已 DROP memory_entities/memory_relations + memory_nodes/_subjects/_edges/_fts + kb_entries/kb_chunks;§2 顶部"表计数的口径"块有详细切分)
-├── db/wiki.db            ← plan-01 起独立 Wiki 数据库 (WikiDatabase, 7 张表 + wiki_schema_version;独立 WAL/checkpoint/backup 生命周期,见 06 §Wiki-v2 / [plan-01-database-contracts.md](../plan/wiki-system-redesign/plan-01-database-contracts.md))
+├── db/wiki.db            ← plan-01 起独立 Wiki 数据库 (WikiDatabase, 7 张表 + wiki_schema_version;独立 WAL/checkpoint/backup 生命周期,见 06 §Wiki-v2 / [plan-01-database-contracts.md](../archive/wiki-system-redesign/plan-01-database-contracts.md))
 ├── webfetch/
 │   ├── cache/<hash>.json  ← URL 抓取缓存
 │   ├── results/<id>.json ← 大结果/binary 持久化

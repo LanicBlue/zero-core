@@ -25,10 +25,10 @@
 // 在 provider 层 = { type:"file", mediaType:"image/..." };非 inline = 无 file part,
 // attachment 元信息在 text part 文本里)。本 spec 读这些文件做断言。
 //
-// ## multimodal 控制
-// seed 的 Mock provider 的模型(mock-1)默认无 multimodal 字段(undefined)。
-// 本 spec 在测试里经 providersUpdateModel IPC 在运行时切 multimodal(true/false),
-// 模拟"支持/不支持"provider。切换后触发 sessionsGetInit 重拉以刷新 context-usage 标识。
+// ## multimodal control
+// The seed provides three immutable-capability models: mock-1 (unknown),
+// mock-image (true), and mock-text (false). Tests switch TestAgent through
+// agentsUpdate instead of restoring the removed providersUpdateModel API.
 //
 // ## 定位
 // tests/e2e/ — Playwright Electron E2E。
@@ -78,28 +78,25 @@ function resetMockCaptures(zeroDir: string): void {
 }
 
 /**
- * Evaluate in renderer to get the seeded Mock provider + its single model.
+ * Switch TestAgent to one of the seeded immutable-capability Mock models through
+ * the supported Agent update surface. AgentService hot-applies the model to the
+ * idle loop, so the next send and context refresh use the selected capability.
  */
-async function getMockProvider(window: import("@playwright/test").Page): Promise<{ providerId: string; modelId: string }> {
-	const result = await window.evaluate(async () => {
+async function selectModelCapability(
+	window: import("@playwright/test").Page,
+	multimodal: true | false | undefined,
+): Promise<void> {
+	await window.evaluate(async (capability) => {
 		const api = (window as any).api;
 		const providers = await api.providersList();
 		const mock = providers.find((p: any) => p.type === "mock") ?? providers[0];
-		return { providerId: mock.id, modelId: mock.models[0].id };
-	});
-	return result;
-}
-
-/**
- * Set the seeded Mock model's `multimodal` capability via the providers:update-model
- * IPC (sub-6). This is how a "supports image" vs "does not" provider is simulated.
- */
-async function setModelMultimodal(window: import("@playwright/test").Page, multimodal: boolean): Promise<void> {
-	const { providerId, modelId } = await getMockProvider(window);
-	await window.evaluate(async ([pid, mid, val]) => {
-		const api = (window as any).api;
-		await api.providersUpdateModel(pid, mid, { multimodal: val });
-	}, [providerId, modelId, multimodal] as const);
+		const model = mock.models.find((m: any) => m.multimodal === capability);
+		if (!model) throw new Error(`seeded Mock model missing multimodal=${String(capability)}`);
+		const agents = await api.agentsList();
+		const agent = agents.find((a: any) => a.name === "TestAgent") ?? agents[0];
+		if (!agent) throw new Error("seeded TestAgent missing");
+		await api.agentsUpdate(agent.id, { provider: mock.name, model: model.id });
+	}, multimodal);
 }
 
 /**
@@ -207,7 +204,7 @@ test.describe("Multimodal input (sub-7)", () => {
 
 	test("case 1: paste image → pending thumbnail → send → multimodal provider receives inline image part", async () => {
 		// Arrange: make the Mock model support image input.
-		await setModelMultimodal(window, true);
+		await selectModelCapability(window, true);
 
 		// Act: paste an image into the textarea.
 		await pasteImage(window, PNG_BYTES);
@@ -245,7 +242,7 @@ test.describe("Multimodal input (sub-7)", () => {
 
 	test("case 2: non-multimodal provider → attachment meta-info TEXT (no inline image part)", async () => {
 		// Arrange: the Mock model does NOT support image input.
-		await setModelMultimodal(window, false);
+		await selectModelCapability(window, false);
 
 		// Act: paste + send.
 		await pasteImage(window, PNG_BYTES);
@@ -311,7 +308,7 @@ test.describe("Multimodal input (sub-7)", () => {
 	// ─── 场景 4:context-usage 模态标识三态 ────────────────────────────────
 
 	test("case 4a: context-usage modality badge = 🖼 image when model multimodal=true", async () => {
-		await setModelMultimodal(window, true);
+		await selectModelCapability(window, true);
 		await refreshContextInfo(window);
 		await expect(window.locator(".context-usage .modality-image")).toBeVisible({ timeout: 15_000 });
 		await expect(window.locator(".context-usage .modality-unknown")).toHaveCount(0);
@@ -319,13 +316,14 @@ test.describe("Multimodal input (sub-7)", () => {
 
 	test("case 4b: context-usage modality badge = 模态未知 when model multimodal=undefined (seed default)", async () => {
 		// Seed model has NO multimodal field → undefined → "模态未知".
+		await selectModelCapability(window, undefined);
 		await refreshContextInfo(window);
 		await expect(window.locator(".context-usage .modality-unknown")).toBeVisible({ timeout: 15_000 });
 		await expect(window.locator(".context-usage .modality-image")).toHaveCount(0);
 	});
 
 	test("case 4c: context-usage modality badge = none when model multimodal=false", async () => {
-		await setModelMultimodal(window, false);
+		await selectModelCapability(window, false);
 		await refreshContextInfo(window);
 		// false → NO badge at all (neither image nor unknown).
 		await expect(window.locator(".context-usage .modality-image")).toHaveCount(0);
@@ -335,7 +333,7 @@ test.describe("Multimodal input (sub-7)", () => {
 	// ─── 场景 5:仅附件无文本可发送 ───────────────────────────────────────
 
 	test("case 5: attachment-only (no text) send is enabled and goes through", async () => {
-		await setModelMultimodal(window, true);
+		await selectModelCapability(window, true);
 
 		// No text typed. Paste an image.
 		await expect(window.locator(".chat-input-bar textarea")).toHaveValue("");
@@ -366,7 +364,7 @@ test.describe("Multimodal input (sub-7)", () => {
 	// ─── 场景 6:+号导入入口(拖拽 Playwright 难稳定模拟,以 +号 覆盖)──────
 
 	test("case 6: + button file import → pending thumbnail → send → provider receives image", async () => {
-		await setModelMultimodal(window, true);
+		await selectModelCapability(window, true);
 
 		// Drive the hidden file input via setInputFiles (most reliable import).
 		await importFileViaPlus(window, PNG_FIXTURE);

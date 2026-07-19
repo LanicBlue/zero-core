@@ -38,7 +38,7 @@
 //
 // ## 运行
 //   `tsx scripts/wiki-benchmark.ts --nodes=100000`
-//   `tsx scripts/wiki-benchmark.ts --nodes=1000000 --out=docs/plan/wiki-system-redesign/bench-1M.json`
+//   `tsx scripts/wiki-benchmark.ts --nodes=1000000 --out=wiki-bench-1M.json`
 //
 // ## 维护规则
 //   - Wiki schema 演进后,本脚本要跟着加新表/列的规模覆盖。

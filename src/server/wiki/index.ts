@@ -11,7 +11,7 @@
 //   - 不重新导出内部 row 类型中的敏感字段(只导出类型与 class 本身)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-01-database-contracts.md §1（模块布局）
+//   - docs/archive/wiki-system-redesign/plan-01-database-contracts.md §1（模块布局）
 
 export { WikiDatabase } from "./wiki-database.js";
 export type { WikiDatabaseHealth } from "./wiki-database.js";

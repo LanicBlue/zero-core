@@ -15,8 +15,8 @@
 > - 渲染 Wiki 树的 component 重写为 `WikiTreePanel`(plan-06),不再读磁盘 markdown。
 >
 > 下文凡是描述旧 `WikiStore` / `wiki-store.ts` / `project_wiki` UI collection /
-> `WikiAnchorsSection` / `wiki:*` IPC 的部分都需对照 [plan-06](../plan/wiki-system-redesign/plan-06-data-api-browser-ui.md)
-> + [plan-07](../plan/wiki-system-redesign/plan-07-management-ui.md) 阅读新实现。
+> `WikiAnchorsSection` / `wiki:*` IPC 的部分都需对照 [plan-06](../archive/wiki-system-redesign/plan-06-data-api-browser-ui.md)
+> + [plan-07](../archive/wiki-system-redesign/plan-07-management-ui.md) 阅读新实现。
 >
 > 渲染层是一个 React + Zustand 单页应用，通过两道桥与后端对话：contextBridge（同步请求）+ WebSocket（流式事件）。本文剖析两道桥的设计与状态管理。
 
@@ -129,7 +129,7 @@ zustand store: create/update 推来 record 直接 patch(免 GET /:id);delete 移
   | `projects` | `project-store.ts:90` | `subscribeListDataChange` | append+replace |
   | `crons` | `cron-store.ts:127` | `subscribeListDataChange` | append+replace |
   | `requirements` | `requirement-store.ts:184` | `subscribeListDataChange` | 仅替换已存在项;新 id 返回 false → refetchAll 重套 filter |
-  | ~~`project_wiki`~~ | ~~`wiki-store.ts:198`~~ | ~~`subscribeDataChange`~~ | ⚠️ **cutover (plan-08 §1) 已退役**:wiki v2 不再走 data-change-hub 全量 refetch;新 wiki UI 改为 pull-on-display(显示时 fetch / active 收 wiki 专属 push / 切走断 push),详见顶部 banner 与 [plan-06](../plan/wiki-system-redesign/plan-06-data-api-browser-ui.md)。 |
+  | ~~`project_wiki`~~ | ~~`wiki-store.ts:198`~~ | ~~`subscribeDataChange`~~ | ⚠️ **cutover (plan-08 §1) 已退役**:wiki v2 不再走 data-change-hub 全量 refetch;新 wiki UI 改为 pull-on-display(显示时 fetch / active 收 wiki 专属 push / 切走断 push),详见顶部 banner 与 [plan-06](../archive/wiki-system-redesign/plan-06-data-api-browser-ui.md)。 |
 
 - 详细决策见 ADR-021。**新增一个 UI 同步域 = 两处各一行**:① `data-change-hub.ts` 的 `UI_COLLECTIONS` Set 加表名;② 该 renderer store 调 `subscribeDataChange` / `subscribeListDataChange` 订阅。
 - 🎮 **可交互演练**:[`docs/visualization/data-sync-flow.html`](../visualization/data-sync-flow.html) —— 把上面五段路径(SqliteStore emit → 白名单 gate → coalesce/flush → WS→IPC 桥 → 各 store 自订阅)做成可点选的主图 + 6 个情景演练(单次写 / 同 tick 多写合并 / burst→refetchAll / 非白名单表静默丢 / delete 不带 record / 过滤列表新 id 不在),每步可单步或自动播放,点主图任一节点查看对应源码片段。
@@ -363,7 +363,7 @@ graph LR
 - **两条事件路径并行,互不替代**:`AppLayout` 是 StreamEvent 的**唯一**订阅者(集中路由 chat 流 + 工作流通知);但 `data:changed` **不走** AppLayout,各工作流域 store 自己用 `data-sync.ts` 订阅各自 collection。前者推"事件 + 增量字段"(流式 token、todo 列表、通知),后者推"完整记录"(create/update 推来整条 record,delete 推 id)。
 - **`ChatStore` 是最重的 store** —— 状态字段(`messagesBySession` / `pendingAgentId` / `activeSessionId` / `activeProjectId` / `streamingSessions` Set / `sessionsByAgent` / `lastError` / `contextInfoBySession`),消费 6+ 种流式事件(`session_init` / `text_delta` / `thinking_delta` / `tool_start` / `tool_end` / `usage` / `message_end` / `agent_end` / `error` / `retry_attempt`)。**`activeAgentId` 不是 stored 字段,是派生 selector** `selectActiveAgentId`(`= activeSessionId ? findSessionById(sid)?.agentId : pendingAgentId`)—— `activeSessionId` 是导航唯一真相源,`pendingAgentId` 仅在下拉选了 agent、session 未 land 的瞬态作 fallback。这从结构上消灭了 agent/session dual-state drift(此前 `setActiveSessionId` 不同步 `activeAgentId` 导致 work 跳转被 General 抢占等失配 bug)。agent-load effect 因此改 keyed on `pendingAgentId`(用户主动选 agent),程序化跳转(work trigger / Kanban 讨论)走 `setActiveSessionId(sid, agentIdHint)` 直达,不触发 land General。
 - **v0.8 工作流域 4 个 store 形成独立的"工作流域子网"**:`ProjectStore` / `RequirementStore` / `CronStore` 都通过 `data:changed` 自订阅(cutover 前 `WikiStore` 也在此组,cutover 后退役,详见下条);`NotificationStore` 通过 StreamEvent 收 3 类工作流通知(requirement_notification / step_failure / verification_failure)。它们与 `ChatStore` 唯一的耦合点是 `AppLayout` 在收到 `requirement_notification` 时顺手调一次 `RequirementStore.fetchRequirements()`(冗余刷新,因为 data:changed 也会推)。
-- **(cutover 后)Wiki 渲染层不再走 `data:changed` 全量 refetch**:旧 `WikiStore`(renderer/store/wiki-store.ts)在 cutover 中删除;wiki v2 改为 **pull-on-display**(显示时 fetch / active 收 wiki 专属 push / 切走断 push),不走 `data-change-hub`/`UI_COLLECTIONS` 主路径。详见顶部 banner + [plan-06](../plan/wiki-system-redesign/plan-06-data-api-browser-ui.md)。
+- **(cutover 后)Wiki 渲染层不再走 `data:changed` 全量 refetch**:旧 `WikiStore`(renderer/store/wiki-store.ts)在 cutover 中删除;wiki v2 改为 **pull-on-display**(显示时 fetch / active 收 wiki 专属 push / 切走断 push),不走 `data-change-hub`/`UI_COLLECTIONS` 主路径。详见顶部 banner + [plan-06](../archive/wiki-system-redesign/plan-06-data-api-browser-ui.md)。
 - **`ThemeStore` / `PageStore` / `InteractionStore` 几乎独立** —— 不订阅任何后端事件,纯前端状态。
 - **旧图错误**:`AgentToolStore` 是 v0.7 残留(v0.8 工具配置下沉到服务端 `tool_configs` 表 + `agents.tools` JSON 列,前端不再有独立 `AgentToolStore`,工具列表由 `AgentStore.fetchTools()` 从 `agents/{id}/tools` 拉来),拓扑已删除该节点。
 

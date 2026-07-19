@@ -7,7 +7,7 @@
 //   1. task/queue store ping→pull(watched 过滤)+ 无 setInterval。
 //   2. (单消费者面为组件测试,这里覆盖 store 层契约:通道正确、watched 过滤)
 //   3. (React.memo 行为是渲染期断言,这里用结构验证:组件已用 React.memo 包裹)
-//   4. WikiAnchorsSection 稳引用(form.wikiAnchors 为 undefined 时 list 引用稳定)。
+//   4. Wiki cutover 后旧 WikiAnchorsSection 保持物理删除。
 //   5. 重连信号:ipc-proxy close→reconnect 后发 ws:reconnected;首次 open 不发。
 //
 // ## 输入
@@ -236,40 +236,14 @@ describe("N2 · React.memo row components (structural)", () => {
 	});
 });
 
-// ─── 4. WikiAnchorsSection stable empty-array reference ───────────────
-//
-// The list value comes from `form.wikiAnchors ?? EMPTY_ANCHORS`. We verify the
-// contract indirectly: when form.wikiAnchors is undefined, two computations of
-// the fallback MUST return the SAME reference (a module-level constant), so the
-// preview effect's deps don't flip identity on unrelated re-renders.
-// We can't easily render the component under node (no DOM), so we replicate the
-// contract assertion at the source-text level + a runtime check of the constant
-// identity via a tiny mirror.
+// ─── 4. Wiki anchor UI cutover guard ───────────────────────────────────────
 
-describe("N2 · WikiAnchorsSection stable EMPTY reference", () => {
-	test("EMPTY_ANCHORS is a single shared identity across 'renders'", async () => {
-		// Mirror the module pattern: ?? EMPTY_ANCHORS must be identity-stable.
-		const EMPTY_ANCHORS: unknown[] = [];
-		const form1 = { wikiAnchors: undefined };
-		const form2 = { wikiAnchors: undefined };
-		const list1 = form1.wikiAnchors ?? EMPTY_ANCHORS;
-		const list2 = form2.wikiAnchors ?? EMPTY_ANCHORS;
-		expect(list1).toBe(list2); // same reference → effect deps stable
-	});
-
-	test("source uses EMPTY_ANCHORS (not inline [])", async () => {
+describe("N2 · Wiki anchor UI cutover", () => {
+	test("legacy WikiAnchorsSection remains removed", async () => {
 		const fs = await import("node:fs");
-		const src = fs.readFileSync(
-			"C:/Users/Administrator/Documents/workspace/agent/zero-core/src/renderer/components/agents/WikiAnchorsSection.tsx",
-			"utf8",
-		);
-		expect(src).toContain("EMPTY_ANCHORS");
-		expect(src).toContain("?? EMPTY_ANCHORS");
-		// The list assignment must use the shared constant, not an inline `?? []`
-		// (which would create a fresh identity each render and bust memo/effect
-		// deps). Strip line comments first so the regex only sees real code.
-		const codeOnly = src.replace(/\/\/[^\n\r]*/g, "");
-		expect(codeOnly).not.toMatch(/\?\?\s*\[\]/);
+		const path = await import("node:path");
+		const legacy = path.join(process.cwd(), "src/renderer/components/agents/WikiAnchorsSection.tsx");
+		expect(fs.existsSync(legacy)).toBe(false);
 	});
 });
 

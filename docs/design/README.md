@@ -8,9 +8,9 @@
 - [`external-subagent-mcp/design.md`](external-subagent-mcp/design.md)
 
 `session-turn-lifecycle`、`local-backend-security-boundary`、`project-flow-system`、
-`agent-work-runtime`、`project-management-ui`、`agent-eval-harness` 与
-`wiki-system-redesign` 已进入 [`../plan/`](../plan/README.md)。准确实施依赖以 plan
-入口为准；这些人工/文档门禁不是 zero-core 已建立的 Flow 控制。
+`agent-work-runtime`、`project-management-ui` 与 `agent-eval-harness` 已进入
+[`../plan/`](../plan/README.md)。`wiki-system-redesign` 已完成并移入
+[`../archive/`](../archive/README.md)。准确实施依赖以 plan 入口为准；这些人工/文档门禁不是 zero-core 已建立的 Flow 控制。
 
 ## 生命周期
 

@@ -18,7 +18,6 @@ docs/archive/<name>/  历史记录
 - [`doc-artifacts-as-files/`](doc-artifacts-as-files/issue.md)
 - [`memory-maintenance/`](memory-maintenance/issue.md)
 - [`prompt-cache-control/`](prompt-cache-control/issue.md)
-- [`session-summary-restart-integrity/`](session-summary-restart-integrity/issue.md)
 - [`skill-script-sandbox/`](skill-script-sandbox/issue.md)
 
 这些文档中的方案、行业材料和“下一步”都是提案。判断现状请回到 [`../basic/`](../basic/README.md)、[`../arch/`](../arch/README.md) 和源码/测试。

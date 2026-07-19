@@ -32,8 +32,8 @@
 //   - 不在数据面 API 上暴露 address register/delete（管理面专属）。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-02-core-service-address-auth.md
-//   - docs/plan/wiki-system-redesign/design.md §6–§8
+//   - docs/archive/wiki-system-redesign/plan-02-core-service-address-auth.md
+//   - docs/archive/wiki-system-redesign/design.md §6–§8
 
 import type {
 	AnyWikiRequestContext,

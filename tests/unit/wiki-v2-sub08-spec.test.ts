@@ -697,7 +697,7 @@ describe("§C backup/restore — Backup API + Core/Wiki isolation", () => {
 // ===========================================================================
 
 describe("§D scale — 100k benchmark report + query-plan assertions", () => {
-	const benchPath = join(process.cwd(), "docs/plan/wiki-system-redesign/bench-100k.json");
+	const benchPath = join(process.cwd(), "docs/archive/wiki-system-redesign/bench-100k.json");
 	let bench: any;
 	beforeAll(() => {
 		expect(existsSync(benchPath), "bench-100k.json must exist").toBe(true);

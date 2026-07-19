@@ -67,8 +67,8 @@
 //   - 不发明 task_state(不存在);只处理 review_after(真实 attribute)。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md §6
-//   - docs/plan/wiki-system-redesign/design.md §9.2
+//   - docs/archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md §6
+//   - docs/archive/wiki-system-redesign/design.md §9.2
 
 import type { WikiService } from "./wiki-service.js";
 import type {

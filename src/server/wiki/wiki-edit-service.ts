@@ -35,8 +35,8 @@
 //   - 不引入 sections 表（design.md §8.7「第一版仍整体读写单个 TEXT」）。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-02-core-service-address-auth.md §5
-//   - docs/plan/wiki-system-redesign/design.md §8.7
+//   - docs/archive/wiki-system-redesign/plan-02-core-service-address-auth.md §5
+//   - docs/archive/wiki-system-redesign/design.md §8.7
 
 import { unified } from "unified";
 import remarkParse from "remark-parse";

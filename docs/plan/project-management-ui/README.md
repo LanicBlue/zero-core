@@ -1,8 +1,8 @@
 # Project Management UI：实施路线图
 
 > 状态：设计完成，尚未实施。
-> 首个外部前置：`wiki-system-redesign` Final 合并与 `project-flow-system` Final。
-> Plan 04 与 Final 另需 `agent-work-runtime` Final；Plan 00–03 可以先实施。
+> Wiki 前置已满足（Final PASS，`master` 基线 `a58102d`，已归档）；当前首个未满足前置是 `project-flow-system` Final。
+> `project-flow-system` Final 后可实施 Plan 00–03；Plan 04 与 Final 另需 `agent-work-runtime` Final。
 > 共同合同：[Agent Project Automation](../agent-project-automation.md)。
 
 ## 阶段

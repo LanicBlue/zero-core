@@ -14,8 +14,8 @@
 >   写 Wiki 不触发 Core checkpoint/mtime/WAL 变化。
 >
 > 下文凡是描述旧 anchor-scope 权限模型 / `wiki-anchor-injection` / `wikiAnchors` /
-> `project_wiki` data subscriber 的部分都需对照 [plan-08](../plan/wiki-system-redesign/plan-08-cutover-hardening.md)
-> + [plan-05](../plan/wiki-system-redesign/plan-05-agent-runtime-prompt.md) 阅读新实现。
+> `project_wiki` data subscriber 的部分都需对照 [plan-08](../archive/wiki-system-redesign/plan-08-cutover-hardening.md)
+> + [plan-05](../archive/wiki-system-redesign/plan-05-agent-runtime-prompt.md) 阅读新实现。
 >
 > 本文聚焦**贯穿多个模块**的关注点：日志、Hooks、并发、代理、恢复、安全。这些是"基础设施之基础设施"。
 

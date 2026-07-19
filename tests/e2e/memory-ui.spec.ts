@@ -3,7 +3,7 @@
 // # 文件说明书
 //
 // ## 核心功能
-// 验证 Settings 中 Memory 导航项存在、点击后展示 Memory & Compression 面板与压缩开关（默认 off）、Save 按钮可见。
+// Verifies Memory & Compression navigation, automatic policy, model selection, and Save.
 // 独立的 Knowledge Base 页与 Memory 标签页已随 KB 子系统移除(memory 现以 wiki 子树形式存在)。
 //
 // ## 输入
@@ -20,7 +20,7 @@
 //
 // ## 维护规则
 // Settings 导航结构变更需同步更新选择器与文案断言
-// 压缩开关默认值变更需更新 hasOn 断言
+// Update assertions when the compression policy or model default changes.
 //
 import { test, expect } from "@playwright/test";
 import { resolve, dirname } from "node:path";
@@ -65,27 +65,20 @@ test.describe("Settings — Memory section", () => {
 		await expect(title).toBeVisible();
 	});
 
-	test("compression toggle is visible and defaults to off", async () => {
+	test("compression is automatic and model defaults to Same as Agent", async () => {
 		const settingsBtn = window.locator(".icon-sidebar-bottom button[title='Settings']");
 		await settingsBtn.click();
 
 		const memoryNav = window.locator(".settings-nav-item", { hasText: "Memory" });
 		await memoryNav.click();
 
-		// Wait for the memory config panel to render
 		await window.waitForSelector(".memory-config", { timeout: 5000 });
+		await expect(window.locator(".memory-config")).toContainText("no enable knob");
+		await expect(window.locator(".memory-config .toggle-switch")).toHaveCount(0);
 
-		const toggles = window.locator(".memory-config .toggle-switch");
-		await expect(toggles.first()).toBeVisible({ timeout: 5000 });
-		const count = await toggles.count();
-		// Only the compression toggle remains (the standalone memory/autoRecall
-		// toggles were removed — memory lives in the wiki tree now).
-		expect(count).toBeGreaterThanOrEqual(1);
-
-		// Compression toggle should not have "on" class by default
-		const firstToggle = toggles.first();
-		const hasOn = await firstToggle.evaluate((el) => el.classList.contains("on"));
-		expect(hasOn).toBe(false);
+		const model = window.getByLabel("Compression Model");
+		await expect(model).toHaveValue("");
+		await expect(model.locator("option").first()).toHaveText("Same as Agent");
 	});
 
 	test("Save button is visible", async () => {

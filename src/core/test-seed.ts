@@ -86,7 +86,11 @@ export function seedTestEnvironment(
 			type: "mock",
 			apiKey: "test",
 			baseUrl: fixturePath,
-			models: [{ id: "mock-1", name: "Mock Model", group: "Mock", contextWindow: 128000, maxTokens: 16384 }],
+			models: [
+				{ id: "mock-1", name: "Mock Model", group: "Mock", contextWindow: 128000, maxTokens: 16384 },
+				{ id: "mock-image", name: "Mock Image Model", group: "Mock", contextWindow: 128000, maxTokens: 16384, multimodal: true },
+				{ id: "mock-text", name: "Mock Text Model", group: "Mock", contextWindow: 128000, maxTokens: 16384, multimodal: false },
+			],
 			enabled: true,
 			isSystem: false,
 		} as any);

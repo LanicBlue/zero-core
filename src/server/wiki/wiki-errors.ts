@@ -18,8 +18,8 @@
 //   - 不把错误码闭集扩展（必须先改 design + 共享契约）。
 //
 // 参见:
-//   - docs/plan/wiki-system-redesign/plan-02-core-service-address-auth.md §2
-//   - docs/plan/wiki-system-redesign/design.md §8.10（错误码闭集）
+//   - docs/archive/wiki-system-redesign/plan-02-core-service-address-auth.md §2
+//   - docs/archive/wiki-system-redesign/design.md §8.10（错误码闭集）
 
 import type { WikiError, WikiErrorCode } from "../../shared/wiki-types.js";
 
