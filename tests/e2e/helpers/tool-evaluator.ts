@@ -92,13 +92,57 @@ export const TOOL_CASES: ToolCase[] = [
 		},
 	},
 	{
-		// Wiki search 成功即可(命中 software-dev 或返回"无匹配"兜底,都非 error)。
-		label: "Wiki search runs without error",
+		// Wiki expand 必须命中一个真实 seed 节点(不再只查"无 error")。
+		// round-2 review P1 §6.3 (Choice B): fresh-env "Agent Wiki tool call"
+		// placeholder 已删除,本 case 接管 fresh-env 的 tool-call 覆盖职责。
+		//
+		// 选 `memory://`(agent 自己的 memory root)作为 known seed node:
+		//   - `zero` agent 拥有 `wiki-root` 全树 grant(见
+		//     builtin-role-templates.ts DEFAULT_GRANTS_ZERO_ADMIN + wiki-access-
+		//     compiler.ts memory:// → wiki-root/memory/<agentId>),授权通过。
+		//   - fresh-db-seed 的 instantiateRole("zero", ...) 调用
+		//     WikiService.ensureAgentMemoryRoot(zero.id, "zero") 幂等建
+		//     `wiki-root/memory/<zero-stable-id>` 节点(management-service.ts
+		//     :520);session build 时再次幂等 ensure(agent-service.ts :652)。
+		//     故测试运行时该节点一定存在(plan-08 §1 cutover 删的是旧 software-dev
+		//     seed 子树,不是 memory root;memory root 由 ensureAgentMemoryRoot
+		//     按需建,是结构性的稳定 seed)。
+		//   - expand memory:// 的 data 字段会含 path = "wiki-root/memory/<id>"。
+		// 断言:result 不像 error,且正向引用 memory root(path 字段或文本含
+		// "/memory" 段 —— 不只是"无错误")。
+		label: "Wiki expand surfaces the agent's own memory:// seed node",
 		toolName: "Wiki",
-		args: { action: "search", query: "software" },
+		args: { action: "expand", node: "memory://" },
 		check: (text) => {
-			const looksLikeError = contains(text, "error") && !contains(text, "no wiki nodes match");
-			if (looksLikeError) return { pass: false, detail: `result looks like an error: ${text.slice(0, 200)}` };
+			const looksLikeError =
+				contains(text, "error") && !contains(text, "no wiki nodes match");
+			if (looksLikeError) {
+				return { pass: false, detail: `result looks like an error: ${text.slice(0, 200)}` };
+			}
+			// Positive assertion: the result must reference the memory root.
+			// Accept either (a) a parsed JSON object whose `path`/`data.path`
+			// contains "/memory" (the canonical memory subtree), or (b) raw
+			// text mentioning "/memory" (renderer sometimes flattens nested
+			// objects). A bare "ok"/"done" or unrelated text fails this.
+			const parsed = tryParseJson(text);
+			const paths: string[] = [];
+			if (parsed && typeof parsed === "object") {
+				const p = (parsed as any).path ?? (parsed as any).data?.path;
+				if (typeof p === "string") paths.push(p);
+				// Some renderings wrap the result under result/data envelopes.
+				const inner = (parsed as any).result ?? (parsed as any).data;
+				if (inner && typeof inner === "object" && typeof inner.path === "string") {
+					paths.push(inner.path);
+				}
+			}
+			const textMentionsMemory = contains(text, "/memory") || contains(text, "memory://");
+			const pathMentionsMemory = paths.some((p) => p.includes("/memory"));
+			if (!textMentionsMemory && !pathMentionsMemory) {
+				return {
+					pass: false,
+					detail: `Wiki expand memory:// did not surface the memory seed node (no "/memory" in path/text): ${text.slice(0, 200)}`,
+				};
+			}
 			return { pass: true };
 		},
 	},

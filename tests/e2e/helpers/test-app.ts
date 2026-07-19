@@ -176,7 +176,9 @@ export async function selectTestAgent(window: Page): Promise<void> {
 // Send a chat message and return when streaming finishes (cursor-blink detached).
 export async function sendChatMessage(window: Page, text: string): Promise<void> {
 	await window.locator(".chat-input-bar textarea").fill(text);
-	await window.locator(".chat-input-bar button:not(.btn-abort)").click();
+	// multimodal-input sub-5 added a .btn-attach button next to Send; exclude it
+	// (and the .btn-abort stop button shown mid-stream) to stay on the Send button.
+	await window.locator(".chat-input-bar button:not(.btn-abort):not(.btn-attach)").click();
 	// Wait for streaming to begin, then for it to end
 	await window.waitForSelector(".cursor-blink", { timeout: 5_000, state: "attached" }).catch(() => {});
 	await window.waitForSelector(".cursor-blink", { timeout: 30_000, state: "detached" });

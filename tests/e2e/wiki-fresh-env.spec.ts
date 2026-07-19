@@ -383,27 +383,27 @@ test.describe("plan-08 §7 — Wiki v2 fresh-env full lifecycle", () => {
 		expect(bodyText && (/knowledge/i.test(bodyText) || /memory/i.test(bodyText) || /projects/i.test(bodyText))).toBe(true);
 	});
 
-	// ─── Step 8 (deferred): Agent Wiki tool call via mock fixture ──────
-	// A full LLM-driven Agent Wiki call needs a fixture that emits a Wiki tool
-	// call payload. The existing simple-response.json fixture does plain chat,
-	// not tool calls. Writing a Wiki-tool-call fixture is acceptance-final work
-	// (requires capturing a real Wiki tool-call stream). Test case left as a
-	// placeholder so the gap is visible.
-	test.skip("Agent Wiki tool call (requires Wiki-tool-call fixture — acceptance-final)", async () => {
-		// Placeholder: drive chat with a mock that emits a Wiki expand tool call,
-		// verify the result round-trips through the data plane and shows in the
-		// chat transcript. Enable once fixtures/wiki-tool-call.json exists.
-	});
+	// ─── Step 8: Agent Wiki tool call — covered by tool-wiring.spec.ts ──────
+	// (user-approved Choice B, 2026-07-19). A full LLM-driven Agent Wiki call
+	// harness lives in `tests/e2e/tool-wiring.spec.ts`, which drives the REAL
+	// `zero` agent with a mock provider to emit a Wiki tool call end-to-end
+	// through the production tool-factory + callerCtx path. The Wiki TOOL_CASE
+	// in `tests/e2e/helpers/tool-evaluator.ts` strengthens the assertion beyond
+	// "no error" to "expands the agent's own memory:// root and surfaces the
+	// memory seed node" — proving the Wiki tool's address resolution, grant
+	// enforcement, and node-fetch wiring all work through the formal entry.
+	// That coverage is stronger than a fixture-driven call here would be (same
+	// runtime path, evaluator-based content check, runs across all TOOL_CASES).
 
-	// ─── Step 9 (deferred): Git rename + sync ─────────────────────────
-	// Requires Step 3's bound repo + a real index cycle. Tricky in E2E because
-	// the indexer is async and we'd need to wait for sync_status transitions
-	// twice (rename → reindex). Left as acceptance-final manual verification.
-	test.skip("Git rename + sync (requires full index cycle — acceptance-final)", async () => {
-		// Placeholder: rewrite src/index.ts → src/main.ts + git mv + commit,
-		// trigger /api/wiki-admin/repositories/reindex, verify wiki_nodes row
-		// for src/index.ts is archived and src/main.ts is active.
-	});
+	// ─── Step 9: Git rename + sync — covered by wiki-management.spec.ts §G.1 ──
+	// (user-approved Choice B, 2026-07-19). The full rename + sync cycle is
+	// exercised in `tests/e2e/wiki-management.spec.ts` ›
+	// "§G.1 runtime:// resolves to renamed target's new canonical path", which
+	// binds a real git repo, runs `git mv src/app.ts src/runtime/app.ts` +
+	// commit, triggers `/api/wiki-admin/repositories/reindex`, waits for sync,
+	// and asserts (a) the NEW path node is reachable via search and (b) the OLD
+	// path is no longer an active node (rename moved it, didn't duplicate).
+	// That subsumes what this placeholder would have done.
 });
 
 // ─── Small fs helpers (avoid pulling extra deps) ─────────────────────

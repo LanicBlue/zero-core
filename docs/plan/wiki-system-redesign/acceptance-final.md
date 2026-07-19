@@ -123,6 +123,34 @@
 - [ ] 删除最后 grant 持久化为 `[]`；下一次调用稳定拒绝，重新打开 Agent Editor 仍为 `[]`。
 - [ ] 普通 Wiki tool 无地址/权限/Prompt 管理 action。
 
+### 8.1 §G4/§G5 时序不变量与 REST/UI 接线的测试归属（2026-07-19 用户批准 Choice B）
+
+§G4/§G5 的两条「running session 时序不变量」——「进行中 tool call 不变」与
+「active project 切换在同一 StepEnd 边界一起完成、无旧项目残留」——按 timing
+粒度需要落到 **runtime integration**，不由 Playwright E2E 守：
+
+- **时序不变量**（mid-tool-call snapshot / next-step 新 revision / 跨 step 单调 /
+  active-project switch 无残留 / pending queue merge）由
+  `tests/unit/wiki-v2-runtime-session-boundary.test.ts` 守，包含：
+  - `§G.4 — running session applies new revision at safety boundary`
+  - `§G.4 (multi-tool-call-per-step) — single step keeps one revision`
+  - `§G.5-runtime — active project switch at safety boundary`
+  - round-2 §3.1–§3.8 merge / cross-session / apply-failure cases
+  这些 fixture 驱动真实 AgentLoop + latch-blocked Block tool，精确卡在 tool call
+  中段，断言 in-flight CallerCtx 与 next-step CallerCtx 的 revision/scope 差异。
+  Playwright UI 层到不了 tool-call 粒度，也无法把 publish/switch 精确卡在两个
+  tool call 之间。
+- **REST/UI 接线**（publish、project binding、grants preview、FORBIDDEN_BODY_KEYS
+  等正式入口的端到端可用性）由 `tests/e2e/wiki-management.spec.ts` 守：§G.1
+  runtime:// rename 稳定性 + Git rename/sync 同步断言、§G.2 impact preview、
+  §G.3 publish 阻断、§G.5 multi-project binding + project:// grant preview、
+  §G.6 删最后 grant 持久化、§G.7 FORBIDDEN_BODY_KEYS、§H.6 Access/Context/
+  Address/ProjectSync publish 流程。
+- **Agent Wiki tool 端到端接线**（fresh-env 场景补齐）由
+  `tests/e2e/tool-wiring.spec.ts` 的 `TOOL_CASES` 循环守，其中 Wiki case 用
+  `expand memory://` 命中 agent 自身 memory root 这个结构性 seed 节点，断言
+  不止「无错误」而是「surface memory 节点」。
+
 ## 9. 场景 H：Browser UI
 
 运行 `tests/e2e/wiki-browser.spec.ts` 与 `tests/e2e/wiki-management.spec.ts`（文件可按仓库规范合并，但必须覆盖同等步骤）：

@@ -26,8 +26,19 @@
 //   - **最大化真实行为断言**:大部分场景走 UI(AgentEditor 的 wiki-access /
 //     wiki-context 段 + WikiProjectCard);少数纯 API 行为(runtime:// rename
 //     稳定性、FORBIDDEN_BODY_KEYS)直接走 REST 断言。
-//   - **complex running-session 阻塞 tool call** 用 test.skip + 注释,标注
-//     "需 X fixture,acceptance-final 人工补"。
+//   - **running-session 时序不变量(StepEnd 边界 / mid-tool-call snapshot /
+//     active-project switch 无残留)** 由 runtime integration 覆盖,不在本 spec:
+//     见 `tests/unit/wiki-v2-runtime-session-boundary.test.ts`(§G.4 + §G.5-runtime
+//     + round-2 §3 multi-tool-call/step + cross-session + apply-failure)。
+//     该 fixture 驱动真实 AgentLoop + latch-blocked Block tool,精确卡在 tool
+//     call 中段,断言 in-flight CallerCtx snapshot 与 next-step snapshot 的 revision
+//     /scope 差异。Playwright UI 层到不了 tool-call 粒度,也无法把 publish/switch
+//     精确卡在 tool call 中段。
+//   - **REST/UI publish、project binding、grants preview 接线** 由本 spec 覆盖
+//     (§G.1 runtime:// rename 稳定性、§G.2 impact preview、§G.3 publish 阻断、
+//     §G.5 multi-project binding + project:// grant preview、§G.6 删最后 grant
+//     持久化、§G.7 FORBIDDEN_BODY_KEYS、§H.6 Access/Context/Address/ProjectSync
+//     publish 流程)。
 //
 // ## 不在本测试范围
 //   - 数据面 Browser UI(在 wiki-browser.spec.ts)。
@@ -258,6 +269,52 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 		// Identity preserved: WikiLinkRepository / address book keeps the alias
 		// pointing at the same node identity (just new canonical path).
 		expect(alias.targetMissing ?? false).toBe(false);
+
+		// 5. round-2 review P1 §6.3 (Choice B): assert the rename actually
+		//    synced into the wiki tree — this subsumes the deleted fresh-env
+		//    "Git rename + sync" skip. The indexer's git-diff mirror must have
+		//    archived the OLD path node and created the NEW path node (rename =
+		//    move, not duplicate). Two direct /api/wiki/read checks on the
+		//    canonical paths (avoids FTS tokenization lag/quirks — read is the
+		//    authoritative active-node lookup):
+		//      (a) NEW path node is ACTIVE/reachable (read returns 200 + node).
+		//      (b) OLD path node is NO LONGER reachable (read returns 400
+		//          NOT_FOUND — the rename moved it, didn't duplicate).
+		//    Both reads can lag a few hundred ms behind the wiki_nodes commit
+		//    (observed in acceptance-final round-1) → retry up to 15s.
+
+		// (a) NEW path reachable. Retry: indexer is async + node write may lag.
+		const readDeadline = Date.now() + 15_000;
+		let newReadOk = false;
+		while (Date.now() < readDeadline) {
+			const r = await apiPost(port, "/api/wiki/read", {
+				address: newPath,
+				view: "summary",
+			}, { allowStatus: true });
+			if (r.status === 200) { newReadOk = true; break; }
+			await new Promise((res) => setTimeout(res, 400));
+		}
+		expect(newReadOk,
+			"NEW path src/runtime/app.ts must be readable post-reindex (rename synced into wiki tree)").toBe(true);
+
+		// (b) OLD path is NO LONGER an active node — read returns NOT_FOUND.
+		// round-2 review P1 §6.3: rename moved the node; the old canonical path
+		// must not remain as an active (duplicate) entry. /api/wiki/read throws
+		// NOT_FOUND on a renamed-away path (authorization-disciplined, same
+		// outward shape as "no grant" — no existence leak). Retry: archived
+		// row may take a moment to settle.
+		let oldRead: any = null;
+		const oldDeadline = Date.now() + 15_000;
+		while (Date.now() < oldDeadline) {
+			oldRead = await apiPost(port, "/api/wiki/read", {
+				address: appPath,
+				view: "summary",
+			}, { allowStatus: true });
+			if (oldRead.status === 400 && oldRead.body?.error?.code === "NOT_FOUND") break;
+			await new Promise((res) => setTimeout(res, 400));
+		}
+		expect(oldRead.status, "OLD path src/app.ts must NOT be readable post-rename (rename = move, not duplicate)").toBe(400);
+		expect(oldRead.body?.error?.code).toBe("NOT_FOUND");
 	});
 
 	// ─── §G.2 Address impact preview lists affected Agent/session ─────────
@@ -349,18 +406,19 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 
 	// ─── §G.4 Running session safety boundary (StepEnd-only revision apply) ──
 	//
-	// Covered as an INTEGRATION test (not E2E) — running AgentLoop + controllable
-	// blocking Block tool is timing-sensitive and best driven at the runtime
-	// layer, not through Playwright UI. See
-	// tests/unit/wiki-v2-runtime-session-boundary.test.ts › §G.4. That fixture
-	// drives a real AgentLoop with a latch-blocked Block tool, publishes grants
-	// mid-tool-call, and asserts: (a) in-flight CallerCtx.wikiAccess is the OLD
+	// **Covered by runtime integration** (user-approved Choice B, 2026-07-19):
+	// `tests/unit/wiki-v2-runtime-session-boundary.test.ts` ›
+	// "§G.4 — running session applies new revision at safety boundary" +
+	// "§G.4 (multi-tool-call-per-step) — single step keeps one revision" +
+	// round-2 §3.5 mid-tool-call multi-enqueue merge tests. Those fixtures drive
+	// a real AgentLoop with a latch-blocked Block tool, publish grants
+	// mid-tool-call, and assert: (a) in-flight CallerCtx.wikiAccess is the OLD
 	// revision (per-call snapshot), (b) next step's CallerCtx reflects the NEW
-	// revision. It also documents a finding: publishAgentWikiPolicy applies
-	// mid-step via onChange→applyConfigUpdate (NOT via enqueueConfigPatch+StepEnd
-	// flush as the docstring claims) — the in-flight snapshot is still safe.
-	test.skip("§G.4 running session applies new revision only at StepEnd boundary (mid-tool-call unchanged) — covered by integration test", async () => {
-	});
+	// revision, (c) two tool calls in ONE step both see the same OLD revision
+	// (single-step revision-coherence). Playwright UI cannot precisely pin a
+	// publish between two tool calls in the same model step — that granularity
+	// only exists at the runtime layer. REST/UI publish wiring itself is
+	// covered by §G.3/§G.6/§H.6 below.
 
 	// ─── §G.5 Active project switch boundary ─────────────────────────────
 	test("§G.5 multi-project binding + project:// grant preview (inactive in preview, active at runtime)", async () => {
@@ -386,7 +444,14 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 		//
 		// The full runtime switch (publish mid-session → step boundary → prompt
 		// uses new project subtree, no old-project content leak) needs a running
-		// agent loop with Wiki tool calls — see test.skip below.
+		// agent loop with Wiki tool calls — **owned by runtime integration**
+		// (user-approved Choice B, 2026-07-19):
+		// `tests/unit/wiki-v2-runtime-session-boundary.test.ts` ›
+		// "§G.5-runtime — active project switch at safety boundary" asserts the
+		// in-flight snapshot stays on projectA, the next step's snapshot is on
+		// projectB, and there is NO projectA residue after the switch (the patch
+		// is enqueued via enqueueConfigPatch + flushed at StepEnd). This spec
+		// covers the multi-project binding + grant preview wiring only.
 		repo2 = makeTempGitRepo();
 		const project2 = await apiPost(port, "/api/projects", {
 			name: "mgmt-e2e-proj-2",
@@ -447,18 +512,19 @@ test.describe("acceptance-final §G/§H.6 — Wiki management & publish", () => 
 		// repo2 cleanup in afterEach(round-2 review P1 §6.2:断言失败也清)。
 	});
 
-	test.skip("§G.5 runtime: switching active project mid-session reframes Wiki Prompt at step boundary (needs running agent loop fixture)", async () => {
-		// Covered as an INTEGRATION test (not E2E) — running AgentLoop + blocking
-		// tool + mid-step project switch is timing-sensitive and best driven at
-		// the runtime layer. See tests/unit/wiki-v2-runtime-session-boundary.test.ts
-		// › §G.5-runtime. That fixture drives a real AgentLoop with a latch-blocked
-		// Block tool, calls sendProjectPrompt with a different projectId mid-call
-		// (production round-2 B2② path: existing loop → enqueueConfigPatch + busy
-		// skip), and asserts: (a) in-flight snapshot still on projectA, (b) next
-		// step's snapshot on projectB, (c) NO projectA residue after the switch,
-		// (d) the patch was queued + flushed at StepEnd boundary (config stays
-		// projectA right after switch, only flips after StepEnd).
-	});
+	// ─── §G.5-runtime Active project switch boundary ───────────────────
+	//
+	// **Covered by runtime integration** (user-approved Choice B, 2026-07-19):
+	// `tests/unit/wiki-v2-runtime-session-boundary.test.ts` ›
+	// "§G.5-runtime — active project switch at safety boundary" drives a real
+	// AgentLoop with a latch-blocked Block tool, calls sendProjectPrompt with a
+	// different projectId mid-call (production round-2 B2② path: existing loop →
+	// enqueueConfigPatch + busy skip), and asserts: (a) in-flight snapshot still
+	// on projectA, (b) next step's snapshot on projectB, (c) NO projectA residue
+	// after the switch, (d) the patch was queued + flushed at StepEnd boundary
+	// (config stays projectA right after switch, only flips after StepEnd). The
+	// multi-project binding + project:// grant preview wiring itself is covered
+	// by §G.5 above.
 
 	// ─── §G.6 Removing the LAST grant persists [] across reload ──────────
 	test("§G.6 deleting last wiki grant persists [] (not undefined) across Agent Editor reload", async () => {
