@@ -4,6 +4,7 @@
 > 实施前计划复审：✅ PASS（见 [`plan-review-r2.md`](./plan-review-r2.md)；当时仅表示计划可进入实施）
 > 实施复审(round-1)：✅ PASS（见 [`acceptance-recommendations.md`](./acceptance-recommendations.md) + round-1 review-fix）
 > 实施复审(round-2)：✅ **PASS**（见 [`acceptance-recommendations-r2.md`](./acceptance-recommendations-r2.md) §10 用户批准 Choice B resolution + [`result-final.md`](./result-final.md)）
+> 实施复审(round-3)：✅ **wiki 范围 PASS**（见 [`acceptance-recommendations-r3.md`](./acceptance-recommendations-r3.md) + [`result-final.md`](./result-final.md) §3;P1-1/P2-1/P3-1 闭,9 个全 e2e 失败 airtight 证非 wiki,用户 2026-07-19 决定 B 留各自 effort）
 > 数据策略：clean cutover，不迁移旧 Wiki 数据。
 
 ## 1. 使用方式

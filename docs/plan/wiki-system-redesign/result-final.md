@@ -1,171 +1,147 @@
-# Result Final:Wiki 重构端到端最终验收(round-2 review-fix)
+# Result Final:Wiki 重构端到端最终验收(round-3 review-fix)
 
 > 验收日期:2026-07-19
-> **门禁基线 SHA**:`b022e52`(round-2 修复末端;本 result 为其上的独立 commit)
-> 分支:`worktree-wiki-redesign`(领先 master 38 commits,**未 merge / 未推**,等用户决定)
-> 依据:[design.md](./design.md)、[acceptance-final.md](./acceptance-final.md)、独立复审 [acceptance-recommendations.md](./acceptance-recommendations.md)(round-1)+ [acceptance-recommendations-r2.md](./acceptance-recommendations-r2.md)(round-2,含 §10 用户批准 Choice B resolution)
-> **结论:PASS** —— round-2 复审的 4 个 P1 + 若干 P2 全部关闭;§F 客观门禁全绿(精确命令 + exit code + 计数见 §2);关键 E2E skip 归零(用户批准 Choice B);1M benchmark allPlansOk;3 方向独立验收一致 PASS(见 §7)。
+> **门禁 SHA**:`b5249f4`(round-3 修复末端;本 result 为其上的**纯文档** commit —— b5249f4 → 本 commit 之间无 src/ 或测试变更)
+> 分支:`worktree-wiki-redesign`(领先 master 41 commits,**未 merge / 未推**,等用户决定)
+> 依据:[design.md](./design.md)、[acceptance-final.md](./acceptance-final.md)、复审 [acceptance-recommendations.md](./acceptance-recommendations.md)(r1)+ [acceptance-recommendations-r2.md](./acceptance-recommendations-r2.md)(r2,§10 Choice B)+ [acceptance-recommendations-r3.md](./acceptance-recommendations-r3.md)(r3)
+> **结论:wiki-system-redesign 范围 PASS**(用户 2026-07-19 决定 B)。round-3 的 P1-1/P2-1/P3-1 全部关闭;wiki 专属 E2E + 客观门禁全绿;完整 `test:e2e` 的 9 个失败经 airtight 核查**无一由 wiki 引起**(multimodal 6 个 master 预存 + memory-ui/model-info/project-page 3 个是分支上别的 effort 的测试债),按用户决定 B 留给各自 effort。
 
 ---
 
-## 0. 本轮背景(round-2)
+## 0. 本轮背景(round-3) + 诚实更正
 
-round-1 review-fix 末端 `badc6a3` 宣告 PASS 后,独立 round-2 复审([acceptance-recommendations-r2.md](./acceptance-recommendations-r2.md))给出 **CHANGES REQUIRED**,列出:
+round-2 result-final 把完整 E2E 记为「87 passed / 1 skipped,exit 0」,**这是错误的**(round-3 复审 r3 §1/§2 指出)。真实情况:完整 `npm run test:e2e` 有失败,且 round-2 result-final 把唯一 skip 错归于 error-handling.spec.ts(实际在 context-usage-real-api.spec.ts),并残留「跑后填」占位文。根因:round-2 全 e2e 输出经 `tail` 截断,我只取了 passed 计数 + 未核 exit code —— 证据不可靠。本轮纠正:所有门禁数字来自**未截断的完整输出 + 真实 exit code**,逐项可复验。
 
-- **P1 §3**:busy session 累积的多个 pending SessionConfig patch,`flushPendingConfigPatch` 只返末项 + 清空整队列 → 前序 patch 的 systemPrompt/modelId/toolPolicy/capabilities 等整对象丢失。
-- **P1 §4**:Context Compiler 用 `expand({limit:100})` 取首 100 直接 children(path ASC),第 101+ 高价值节点(如 priority=999 path-last)永不进候选;且 per-node `read()` + per-node `countActiveChildren()` 是 2× N+1。
-- **P1 §5**:Project Prompt 6 个结构字段(goals/stack/entrypoints/modules/risks/constraints)无生产写入者,真实项目全显 `(none recorded)` 却 `semanticSyncStatus=fresh`。
-- **P1 §6**:关键 E2E §G.5 复现失败(`bindAndIndex` 取 `repositories[0]`)+ G4/G5/fresh-env 仍是 `test.skip`。
-- **P2 §7**:plan-00 backup 契约双重锁定、过期注释、result-final 数字(780 vs 实际 786)、test.skip 被写成 PASS。
+round-3 复审(acceptance-recommendations-r3.md)CHANGES REQUIRED,4 项:
+- **P1-1**:error-handling.spec.ts 3 处 Send 选择器 `.chat-input-bar button:not(.btn-abort)` 歧义 multimodal sub-5 的 `.btn-attach` → 3 case 稳定失败。
+- **P1-2**:result-final 证据不可靠(见上)+ 门禁基线 b022e52 后的 9db8627 又改了测试 → 记录的门禁没覆盖最终测试树。
+- **P2-1**:§G.1 reindex 轮询 `!== "indexing" → break` 把 pending/failed/未出现都当成功(round-2 R5 只改了 find-by-projectId,没改严格契约)。
+- **P3-1**:wiki-fresh-env + r2 文档残留「search」描述,实际用 /api/wiki/read。
 
-本轮按 review §2 顺序逐项修复,implement↔verify 分 agent,每项独立 verifier 判 PASS 后提交,最后 3 方向独立验收。
+## 1. round-3 修复矩阵
 
-## 1. 修复矩阵(round-2 finding → commit → 验证)
+| finding | 修法 | 验证 |
+|---|---|---|
+| **P1-1** Send 选择器 | 统一改 `getByRole("button", {name:"Send"})`(Send 按钮文本 "Send",只匹配它,不匹配 "+"(attach)/"Stop"(abort),抗未来输入按钮)。覆盖**全部 6 处**:error-handling(3 内联)+ test-app sendChatMessage + multimodal-input clickSend/sendBtn(2)+ page-restore + session-archive。后 4 处是本轮发现的同类潜在失败(round-2 全 e2e 因 .btn-attach 渲染 flaky 走运没报) | error-handling 3 case 在全 e2e 中 PASS(不在失败列表)|
+| **P2-1** §G.1 严格 synced | 抽取共享 `waitForProjectSynced(port, projectId)`(严格契约:synced→返回 / failed→抛 lastError / 其他→轮询 / 超时→抛诊断),bindAndIndex + §G.1 reindex 都用它 | §G.1 / §G.5 E2E PASS |
+| **P3-1** search→read 文档 | wiki-fresh-env §G.1 映射注释 + r2 §10.3:NEW path 验证从「search 命中」改为「/api/wiki/read 返 200」(与实现一致) | 文档一致 |
+| **P1-2** 证据可靠 | 门禁基线改为 round-3 末端 `b5249f4`(含全部测试修复);本 result 是 b5249f4 之上的**纯文档** commit;所有数字来自未截断完整输出 + 真实 exit code;无「跑后填」占位 | 见 §2/§3 |
 
-| finding | fix commit | 修法要点 | 独立验证 |
-|---|---|---|---|
-| **P1 §3** config queue 丢字段 | `6949375` | `flushPendingConfigPatch` 改 peek+merge(按入队顺序 Object.assign 浅合并:同字段后写覆盖、异字段全保留、整体替换字段取末值原样);新增 `confirmPendingConfigApplied`(apply 成功才清空);config-sync hook 改 flush→apply→confirm-on-success,apply 失败不 confirm、整批留队列下个 StepEnd 重试;StepEnd snapshot 不变量保持 | 8 新测试(full→wiki-only / wiki-only→full / 3+ last-wins / 二次 flush null / mid-tool-call 多入队旧 snapshot+下 step 见合并 / 跨 session 隔离 / 整体替换不拼接 / apply 失败留队列重试);focused 12/12 |
-| **P1 §4** compiler 前 100 偏置 + N+1 | `972b7ec` + `da09b93` | 新增 `listContextCandidates`(全量 active 直接 children,scanCap 5000)+ `getActiveChildrenBounded`(1 COUNT + 1 bounded SELECT)+ `countChildrenByParents`(1 grouped COUNT)替代 expand({limit:100})+ per-node read/count;子树查询常数化;`selectionTruncated` 流到 stats+render。`da09b93` 加复合索引 `idx_wiki_nodes_parent_archived (parent_id, archived_at)` 修 grouped COUNT 退路(40ms/op→30us/op@100k,covering seek) | 9 新测试(tail-priority priority=999 path-last 进 standard / workContext tail 命中 / 低置信 hypothesis 不被绕过 / total·dropped·truncated 真实 / scanCap 触顶 selectionTruncated+marker / 字节确定 / 无 grant 不泄露 / N+1 guard spy:expand=0 countActiveChildren=0 N=10 vs 50 查询数相等);focused 36/36 |
-| **P1 §5** manifest 无生产写入者 | `45c6418` | `wiki-manifest.ts`(ProjectManifestStatus pending/partial/ready + manifestStatusFromAttrs absent→pending);indexer fullIndex→`seedProjectManifestPending`、MODIFY→`demoteManifestIfReady`(ready→partial);wiki-enrich prompt 加「第 0 步填 manifest」+「收尾置 status」块(读 README/pkg/build/目录 summary → 派生非粘贴 6 字段 → update project:// → ready/partial,绝不假装 ready);compiler `renderManifestStatusLine`;admin view manifestStatus;UI WikiProjectCard 第 3 badge;drain 不动 manifest(已读码验证) | 14 测试(fullIndex→pending 6 字段 absent / 生产 WikiService.update(project://)写真字段→ready + preview==runtime 字节同 / partial 状态 / indexer.sync MODIFY 真降级 ready→partial + re-enrich→ready 状态机 / drain 保持 root manifest / 无替代写 self-check / admin view+UI wiring);focused 14/14 |
-| **P1 §6.1** E2E helper bug | `5b9dadc` | `bindAndIndex` 改 `repositories.find(r => r.projectId === projectId)`;只在该项目 synced 返回;failed 抛 lastError;超时抛诊断;400ms 轮询无固定 sleep;wiki-browser.spec.ts 同模式;repo2 入 afterEach | §G.5 multi-project E2E 10.7s PASS(修复前 exit 1) |
-| **P1 §6.3** 关键 skip | `95fccd3` | **用户 2026-07-19 批准 Choice B**:删 4 个空 test.skip(G4/G5-runtime/fresh-env×2),零残留;acceptance-final §8.1 写明归属(G4/G5 时序→runtime integration;REST/UI publish/绑定/preview→Playwright);fresh-env 映射到已有真 E2E 并**加强断言**:tool-wiring Wiki(expand memory:// 命中 agent memory root seed)+ wiki-management §G.1(rename 后 NEW path read 200 / OLD path NOT_FOUND);顺带修 test-app.ts sendChatMessage 预存 `.btn-attach` 选择器歧义;r2 复审记录追加 §10(原 §1-9 原样) | 5 文件 E2E(incl tool-wiring)**31 passed / 0 skipped**;关键 skip 归零 |
-| **P2 §7.1** backup 双重契约 | `b022e52` | plan-00 §3 删 `DatabaseManager.backupCore/backupWiki` 锁定,改 4 路径权威 getter;明文 backup 机制归 `WikiBackupService`(plan-08)单 owner 消费 getter + better-sqlite3 `Database.backup()`;保留废止说明消解双重契约 | doc-only;build:lib + check:links 786 绿 |
-| **P2 §7.2** 过期注释 | `95fccd3` 内 | wiki-management G4 注释(原称 publish mid-step 直接 apply)随 §6.3 skip 删除一并重写为现行 StepEnd 语义 + 归属说明 | — |
-| **P2 §7.3** result-final 数字 | 本提交 | 780→实际 **786** links;精确 SHA + 实际命令 + exit code + 计数 + skip 逐项;不再把 test.skip 写成 PASS | 见本文 §2/§3 |
+修复 commit:`b5249f4`(round-3 P1-1/P2-1/P3-1 一并)。
 
-## 2. §F 客观门禁(2026-07-19,门禁基线 `b022e52`)
+## 2. §F 客观门禁(2026-07-19,门禁 SHA `b5249f4`)
 
-| 命令 | exit | 结果 |
+| 命令 | exit | 结果(未截断完整输出) |
 |---|---|---|
 | `npm run typecheck` | 0 | 3 tsconfig(cli/web/node)全过 |
 | `npm run build:lib` | 0 | tsc emit 全过 |
-| `npm run build` | 0 | electron-vite built in 8.20s |
-| `npm run check:links` | 0 | **786 relative links(.md + source + dir)全绿** |
+| `npm run build` | 0 | electron-vite built OK |
+| `npm run check:links` | 0 | **802 relative links(.md + source + dir)全绿** |
 | `npm run test:unit`(×2 连续,maxThreads:1 全串行) | 0 | **174 files / 3097 tests 全绿 ×2**(0 fail) |
 | `git diff --check` | 0 | clean(仅 CRLF/LF 提示,非错误) |
-| `git status --short` | — | 干净(仅本 result + README 待提交) |
-| 5 文件 wiki E2E(wiki-browser/management/fresh-env/p8/tool-wiring) | 0 | **31 passed / 0 skipped**(6.2m) |
-| 完整 `npm run test:e2e` | _见 §3_ | _见 §3(跑后填)_ |
+| wiki 专属 5 文件 E2E(tool-wiring + wiki-browser + wiki-management + wiki-fresh-env + p8) | 0 | **31 passed / 0 skipped** |
+| 完整 `npm run test:e2e`(build + 全 `playwright test`) | **非 0**(见 §3) | **92 passed / 9 failed / 1 skipped**(17.2m)—— 9 失败全非 wiki,见 §3 |
 | 1M benchmark | — | allPlansOk,见 §4 |
 
-**test:unit 定确性**:沿用 round-1 的 maxThreads:1 全串行(Vitest4 `pool/poolOptions` 顶层 + maxThreads/minThreads=1)。global testTimeout 仍 5000ms(未靠抬 timeout 掩盖)。本轮新增测试(§3 8 + §4 9 + §5 14 = 31 个)连续 2× 3097/3097 绿。
+**test:unit 定确性**:沿用 round-1 的 maxThreads:1 全串行(Vitest4 `pool/poolOptions` 顶层 + maxThreads/minThreads=1)。global testTimeout 仍 5000ms。本轮无生产码改动,test:unit 计数与 round-2 一致(3097)。
 
-## 3. 完整 E2E(review §6.4 / §8)
+## 3. 完整 E2E 真实结果 + 9 失败的 airtight 归因(review r3 §2.3 + 用户决定 B)
 
-`npm run test:e2e`(= `npm run build && playwright test`,无过滤,全 spec):exit 0,**87 passed / 1 skipped**(17.9m)。
+`npm run test:e2e`(门禁 SHA `b5249f4`):**92 passed / 9 failed / 1 skipped**,playwright exit 非 0。
 
-**唯一的 skip**(非 wiki、非本轮引入):`tests/e2e/error-handling.spec.ts` 一项(error banner 时序相关,预存防御性 skip,与 wiki-system-redesign 无关)。wiki 相关 5 文件(wiki-browser/management/fresh-env/p8/tool-wiring)**0 skipped / 31 passed**。
+### 3.1 唯一 skip(正确归属)
 
-**关键 E2E skip 状态(用户批准 Choice B,2026-07-19)**:wiki 相关 5 文件 E2E **0 skipped**。原 4 个关键 skip 已全部删除并映射:
+`tests/e2e/context-usage-real-api.spec.ts` —— 由 `ZERO_CORE_E2E_REAL_API` 环境变量控制,**默认跳过**(设计如此,非失败、非 wiki)。round-2 错把它归于 error-handling.spec.ts(已纠正)。error-handling.spec.ts **无 test.skip**(round-3 P1-1 修复后其 3 case 全 PASS)。
 
-| 原 skip | 归属 | 覆盖测试 | 非阻塞依据 |
+### 3.2 9 个失败 —— 经 airtight 核查**无一由 wiki-system-redesign 引起**
+
+| spec | case | 失败原因 | 归因证据 |
 |---|---|---|---|
-| §G.4 running-session policy publish StepEnd | runtime integration | [wiki-v2-runtime-session-boundary.test.ts](../../../tests/unit/wiki-v2-runtime-session-boundary.test.ts) §G.4 + round-2 §3.5 multi-tool-call/step | 真实 AgentLoop + latch-blocked Block tool,精确卡 tool call 中段;Playwright UI 到不了 tool-call 粒度 |
-| §G.5-runtime active-project switch StepEnd | runtime integration | 同上 §G.5-runtime | 同上;§G.5 multi-project binding(REST/UI 接线)由 wiki-management.spec.ts Playwright 覆盖 |
-| fresh-env Agent Wiki tool call | Playwright | [tool-wiring.spec.ts](../../../tests/e2e/tool-wiring.spec.ts) TOOL_CASES(Wiki case 加强:expand memory:// 命中 seed 节点) | 真 zero agent 端到端调 Wiki tool |
-| fresh-env Git rename + sync | Playwright | [wiki-management.spec.ts](../../../tests/e2e/wiki-management.spec.ts) §G.1(加强:NEW path read 200 / OLD path NOT_FOUND) | 真 git rename + reindex + wiki 树同步断言 |
+| multimodal-input(6 个 case) | sub-7 多模态输入 | `TypeError: api.providersUpdateModel is not a function` | **master 预存**:`providersUpdateModel` 被 commit `48ba305`(multimodal "多模态不可编辑" 修复)**删除,且 48ba305 在 master 上**(`git merge-base --is-ancestor 48ba305 master` = YES);master 的 multimodal-input.spec.ts 仍调用它(2 处)+ master preload 已无它 → **master 自己就失败**。wiki 的 39 commits 不含任何 multimodal/providersUpdateModel 改动 |
+| memory-ui | compression toggle 可见 | `expect(toggles.first()).toBeVisible` 失败 | 压缩特性,wiki **未碰**:wiki 不涉及 compression-core.ts / compression-trigger-hooks.ts(那是 compression-archive-simplify / memory-compaction-runtime effort)。spec 与 master 字节一致(`git diff master..HEAD -- tests/e2e/memory-ui.spec.ts` = 空) |
+| model-info | model 下拉格式 | `expect(text).toMatch(/Mock Model\s*—\s*128K/)` 失败 | 模型下拉渲染,wiki **未碰**。spec 与 master 字节一致 |
+| project-page | New Project modal fill | `locator.fill: Timeout 30000ms` | wiki 的 ProjectPage.tsx diff **只加 WikiProjectCard**(import + DashboardTab 挂载 + handleOpenWiki),**无 `<input>`、不碰 New Project modal**(`git diff master..HEAD -- ProjectPage.tsx | grep '<input'` = 空)。spec 与 master 字节一致 |
 
-_完整 e2e 其余(非 wiki)spec 的 skip(若有)逐项非阻塞说明跑完后补。_
+**核查方法**:逐 spec 检查 (a) wiki 是否改了该 spec(全 3 个 + multimodal spec 中,只有 multimodal-input.spec.ts 被 round-3 P1-1 动过,且改的是 Send 选择器非 providersUpdateModel 调用);(b) wiki 是否改了该 spec 测试的生产特性(wiki 未碰 compression / model 下拉 / project modal 生产码);(c) multimodal 用 `git merge-base --is-ancestor` 证删除 commit 在 master 上。3 个非 multimodal spec 干净重跑仍确定性失败(非 flaky)。
 
-## 4. 1M benchmark(release gate,round-2 post-fix)
+**用户决定(2026-07-19,B)**:这 9 个是 wiki-system-redesign 范围外的失败(multimodal 是 master 预存;memory-ui/model-info/project-page 是分支上 compression/model/project 特性的测试债),**留给各自 effort 修**,wiki 验收按 wiki 范围独立 PASS。
 
-- 命令:`npx tsx scripts/wiki-benchmark.ts --nodes=1000000 --out=bench-1m-r3.json`
-- 报告:[bench-1m-r3.json](./bench-1m-r3.json),**commit SHA `b022e52` = 门禁基线 HEAD**(无差异)
-- 硬件:i5-12400F / Win11 / Node 24.12.0
-- 结果:**1,015,626 nodes / 21.50s 生成,total 42.30s**(round-1 44.12s / round-1-fix 44.93s → 本轮更快),**RSS 158→160MB(+2MB,无文件爆炸)**,**allPlansOk=true**
-- per-op:S1 canonical read 19.4us / S2 expand 101us / S3 links 24-28us / S4 FTS 4.97ms / **S5 authorized search 360ms/op@1M** / S6 subtree move 414ms/op
-- **新增 candidate-selection 基准(round-2 §4/§8)**:
-  - S7 candidate bounded SELECT(scanCap 5000):**144.8us/op@1M**(parent_id+archived 复合索引 seek)
-  - S8 candidate grouped childrenCount(batch 64):**30.3us/op@1M**(covering seek,与规模无关;复合索引修复前退路 ~400ms/op@1M)
-  - S9 candidate scale width=1000:1.47ms/op,**tail `zzz-critical`(priority=999 path-last)fetched 50/50**(旧 expand limit:100 会排除)
-- **S5 perf note**(非 gate fail):authorized multi-scope search 的 LIKE-path 无前缀索引,1M 下 360ms/op(100k 下 47ms)。production 1M 建议加 path 前缀索引(已知限制,见 §5)。
-- 结论:§4(compiler 重写 + countSourceStale/countChildrenByParents)+ §5(manifest 渲染 + indexer seed)+ 复合索引**未回归**规模与性能路径,数字与 pre-review 持平或更优。
+### 3.3 wiki 关键 E2E + integration(全绿,r3 §2.1/§2.2 复核)
 
-## 5. 已知非阻塞 follow-up(全部 minor/nit,非 release-blocker)
+- Wiki Playwright(tool-wiring Wiki expand memory:// + §G.1 rename NEW/OLD path + §G.5 multi-project):`3 passed` exit 0
+- G4/G5 runtime boundary(`wiki-v2-runtime-session-boundary.test.ts`,真 AgentLoop + latch-blocked tool):`12 passed` exit 0
 
-1. **[minor]** S5 authorized multi-scope search 1M 下 360ms/op(LIKE-path 无前缀索引)。非 gate fail(搜索非 hot path,token 预算内 top-k)。production 上 1M 规模建议加 path 前缀索引。
-2. **[nit]** §3:`AgentService.setPmService()` 直调 `applyConfigUpdate({capabilities})` 绕过 `enqueueConfigPatch`(启动期专用 / 仅换 service-handle 指针非 policyRevision·wikiAccess / capabilities 在 tool-dispatch 时读不烤进 in-flight CallerCtx)。**非可利用**。建议收紧 docstring 或路由经 enqueueConfigPatch 对称化。
-3. **[nit]** §5:BackupService 构造对 database-paths 常量留 fallback(`deps.x ?? constant`),是「软」单 owner(约定强制非类型强制)。今日无分叉(两源读同常量,生产总传 getter)。可选把 deps 字段改 required 硬化。
-4. **[nit]** §6.3 Choice B:G4/G5 StepEnd 时序由 integration 而非 Playwright 覆盖(用户批准的契约选择,见 acceptance-final §8.1 + r2 §10)。若未来要求 Playwright 粒度,需建 blocking-tool fixture(当时否决的 Choice A)。
+## 4. 1M benchmark(release gate)
 
-均不阻塞 merge/release。
+- 报告:[bench-1m-r3.json](./bench-1m-r3.json),commit SHA `da09b93`。**round-3(b5249f4)仅改 test/doc,无生产码改动** → wiki/compiler/indexer 生产路径在 b5249f4 ≡ da09b93,benchmark 对门禁 SHA 有效。
+- 结果:**1,015,626 nodes / 21.50s 生成,total 42.30s,RSS 158→160MB(+2MB),allPlansOk=true**
+- S7 candidate bounded SELECT 144.8us/op@1M / **S8 grouped childrenCount 30.3us/op@1M**(复合索引 covering seek)/ S9 width=1000 tail(priority=999 path-last)fetched 50/50
+- S5 authorized search 360ms/op@1M(LIKE-path 无前缀索引,非 gate fail,搜索非 hot path)—— production 1M 建议加 path 前缀索引(已知限制)
 
-## 6. acceptance-final §A-J 最终判定(round-2 复核)
+## 5. 已知非阻塞 follow-up
 
-| 场景 | 判定 | 关键证据(本轮复核) | 实际测试文件 |
-|---|---|---|---|
-| A Fresh bootstrap / 身份 | PASS | runtime-unreachable;§A classification 真守卫(Node 原生 walker) | wiki-v2-sub08-spec.test.ts |
-| B 权限隔离 | PASS | scope-guess oracle 不存在;countSourceStale authz-gated;缺 action ACCESS_DENIED | wiki-v2-integration.test.ts |
-| C 项目镜像 | PASS | tracked+inferred == git ls-tree;rename 保 identity;**structure-sync vs semantic-sync 显式区分**(round-1 P1-5);§G.1 NEW/OLD path 断言(round-2 §6.3) | wiki-v2-indexer.test.ts + wiki-management.spec.ts §G.1 |
-| D Memory + Prompt | PASS | **Context Compiler 真候选集(无首 100 偏置,无 N+1)**(§4);**Project manifest 生产写入 + 状态行**(§5);preview==runtime 字节同 | wiki-v2-context-compiler.test.ts + wiki-v2-p1-5-manifest-writer.test.ts |
-| E 编辑/关系/并发 | PASS | revision CAS;**busy-loop publish 走 StepEnd**(round-1 P0-1);**config queue 字段合并 + apply 失败重试**(round-2 §3) | wiki-v2-runtime-session-boundary.test.ts(§3.x + §G.4/§G.5-runtime) |
-| F Git sync | PASS | rename 同 rowid;故障→sync_status=failed + indexed_revision 不变 + rollback | wiki-v2-indexer.test.ts |
-| G 逻辑地址/管理发布 | PASS | runtime:// rename;publish 阻未授权;affectedSessions.applied 真实;**关键 skip 归零**(§6.3 用户批准 Choice B);§G.5 multi-project helper 修复(§6.1) | wiki-management.spec.ts(31/0)+ integration §G.4/§G.5-runtime |
-| H Browser UI | PASS | §H.4 stale-while-editing;§H.5 live-update;XSS fixture 不执行;**WikiProjectCard manifest badge**(§5) | wiki-browser.spec.ts + p8-wiki-and-agent-config.spec.ts |
-| I 安全旁路 | PASS | 6 FS-tool isProtectedPathRealpath;directory-junction 全向量;3 FORBIDDEN_BODY_KEYS | wiki-v2-sub07-spec.test.ts |
-| J 备份/重启/规模 | PASS | **SQLite Backup API 单 owner**(round-1 P1-4 + round-2 §7.1 plan 契约对齐);Core/Wiki WAL 隔离;**1M allPlansOk**(§4) | wiki-backup*.test.ts + wiki-v2-sub08-spec.test.ts + bench-1m-r3.json |
+**round-3 范围外(用户决定 B,留各自 effort)**:
+1. multimodal-input.spec.ts 6 case:调用了 master 上已删的 `providersUpdateModel` API(48ba305)→ TypeError。multimodal effort 需更新测试(改用 mock provider 已有多模态模型 / 改 fixture)。
+2. memory-ui compression toggle 可见性:compression-archive-simplify / memory-compaction-runtime effort 的测试债。
+3. model-info model 下拉格式:同上,非 wiki。
+4. project-page New Project modal fill:同上,非 wiki(wiki 的 ProjectPage 改动不碰 modal)。
 
-## 7. 3 方向独立验收(Workflow `wf_41328fc7-064`,4 agent,358k tokens)
+**round-2 残留(全 minor/nit,非阻塞)**:
+5. setPmService 绕 enqueueConfigPatch(启动期/非可利用);6. >5000 直接 children 偏置(pathological,selectionTruncated marker);7. manifest_status=ready 由 prompt 强制非结构校验(优雅降级);8. BackupService 软单 owner fallback;9. pendingConfigPatches 驱逐不 Map.delete(预存、bounded);10. fresh-env Wiki tool call skip 删除是覆盖 tradeoff(用户批准 Choice B)。
 
-| 方向 | 判定 | 证据(各方向独立重跑定向套件,非转述 orchestrator) |
+均不阻塞 wiki merge/release。
+
+## 6. acceptance-final §A-J 判定(wiki 范围,round-3 复核)
+
+| 场景 | 判定 | 实际测试文件 |
 |---|---|---|
-| **规约 SPEC** | **PASS**(6/6 fix) | 每项 fix 对照 acceptance-recommendations-r2.md §3/§4/§5/§6.1/§6.3/§7.1 + acceptance-final §8.1 逐条确认 required-behavior + required-tests 满足;§3 12/12、§4 36/36、§5 14/14、§6.1 §G.5/§G.1 E2E、§6.3 tool-wiring Wiki + §G.1、§7.1 clean-HEAD check:links 785/785 |
-| **对抗 ADVERSARIAL** | **PASS**(6/6 fix) | 读 diff + 生产码,构造对抗场景(poison-pill patch / 驱逐泄漏 / scanCap>5000 偏置 / manifest ready 不校验字段 / §G.1 reindex 循环 / ACCESS_DENIED 假阳性);每项 fix 行为成立,0 blocker;残留全 minor |
-| **架构 ARCHITECTURE** | **PASS**(6/6 fix) | 8 不变量全成立(zero AgentLoop edits `git diff 6949375^..b022e52 -- src/runtime/agent-loop.ts` = 空 / preview==runtime 同源 / 单 owner 路径 / canonical-path-only ContextCandidate 无 id 字段 / authz 前置 / 无新 require 陷阱 / 三面分离 / §3·§4·§5 属性命名空间不交叠);sub08-arch 34/34 + runtime-tool-wiring/tool-auth 58/58 + runtime-e2e-wiring/service/auth 64/64 |
-| **综合 SYNTHESIS** | **PASS** | 三方向一致 PASS,6 fix × 3 方向 = 18 项全 PASS,**0 FAIL / 0 blocker**;10 个 MINOR 残留全非阻塞、非本轮回归 |
+| A Fresh bootstrap / 身份 | PASS | wiki-v2-sub08-spec.test.ts |
+| B 权限隔离 | PASS | wiki-v2-integration.test.ts |
+| C 项目镜像 | PASS | wiki-v2-indexer.test.ts + wiki-management §G.1 |
+| D Memory + Prompt | PASS | wiki-v2-context-compiler.test.ts + wiki-v2-p1-5-manifest-writer.test.ts |
+| E 编辑/关系/并发 | PASS | wiki-v2-runtime-session-boundary.test.ts(§3 + §G.4/§G.5-runtime)|
+| F Git sync | PASS | wiki-v2-indexer.test.ts |
+| G 逻辑地址/管理发布 | PASS | wiki-management.spec.ts(31/0)+ integration §G.4/§G.5-runtime |
+| H Browser UI | PASS | wiki-browser.spec.ts + p8-wiki-and-agent-config.spec.ts |
+| I 安全旁路 | PASS | wiki-v2-sub07-spec.test.ts |
+| J 备份/重启/规模 | PASS | wiki-backup*.test.ts + wiki-v2-sub08-spec.test.ts + bench-1m-r3.json |
 
-**10 个非阻塞 MINOR 残留**(SYNTHESIS 去重;R5/R6/R8 本轮已顺手修,见下):
+## 7. 3 方向独立验收(round-2 Workflow `wf_41328fc7-064`)
 
-1. **R1 [§3,预存]** `pendingConfigPatches` Map 在 session 驱逐时不 Map.delete → apply 失败重试期被驱逐则队列泄漏到 AgentService 生命周期;理论 poison-pill:`getMultimodal` 持续抛(非法 providerName/modelId)则队列每 StepEnd 增长。预存、注释明示、bounded by session 生命周期 + enqueue 速率。
-2. **R2 [§4,tradeoff]** >5000 直接 children 偏置「缓解非消除」:`ORDER BY path ASC,id ASC LIMIT 5000` 丢弃位置 5001+ 的子节点(高优先 `zzz-critical` 在 5001 不入选)。`selectionTruncated=true` 渲染 marker;注释标「pathological parent only」。现实子树永不触顶。
-3. **R3 [§5,设计限]** `manifest_status='ready'` 由 prompt 强制,非结构校验 6 字段非空。LLM 失误可能渲「Manifest: ready」旁跟「Goals: (none recorded)」。优雅降级(字段仍显 none recorded),无负测试。
-4. **R4 [§5,cosmetic]** WikiProjectCard.tsx badge JSX 缩进比上方 span 少一 tab。纯空白,typecheck 绿。(本轮未改,cosmetic)
-5. **R5 [§6.1,本轮已修]** §G.1 独立 reindex-wait 循环(line 263)曾仍用旧 `repositories?.[0]`。单项目安全但不一致 → **本轮已统一为 find by projectId**(见 commit)。
-6. **R6 [§6.3,本轮已修]** wiki-browser.spec.ts:31 过期注释曾引用已删的 fresh-env test.skip → **本轮已更新注释**。
-7. **R7 [§6.3,防御性]** p8-wiki-and-agent-config.spec.ts:225 条件 `test.skip('no seeded project in fixture')` —— 防御性 guard,非 §6.3 的 4 个关键 skip。
-8. **R8 [§6.3,本轮已修]** tool-evaluator `looksLikeError` 对含 `/memory` 的 `ACCESS_DENIED` 可能假阳性 → **本轮已收紧**(显式排除 ACCESS_DENIED)。
-9. **R9 [§6.3,用户批准]** fresh-env「Agent Wiki tool call」skip 删除是真实覆盖 tradeoff(chat→LLM→tool-call 决策流不再测,只测 mock-emitted tool-call 路径)—— **用户批准 Choice B**。
-10. **R10 [§7.1,本轮已修]** 工作树 result-final.md 曾有 9 个断链(result-NN-database-foundation.md,实为 result-NN.md)→ **本轮已修正链 + check:links 复跑绿**。
+SPEC / ADVERSARIAL / ARCHITECTURE 一致 **PASS**(6 fix × 3 方向 = 18 项全 PASS,0 blocker,10 MINOR 残留全非阻塞)。详见 round-2 result 记录;round-3 修复(test/doc only)未改生产码,该验收仍有效。
 
 ## 8. 独立性说明
 
-- **实现者与验收者分离**:每项 fix 由 implementer(只写 CODE)+ 独立 verifier(写/改测试 + 判 PASS/FAIL)两 agent 完成,orchestrator gate(git diff 非空 + typecheck)后提交。
-- **3 方向验收独立**:规约/对抗/架构 3 个 verifier agent 各从不同方向独立重验(读 diff + 生产码 + 重跑定向套件),互不共享上下文;综合 judge 聚合。
-- **review 独立**:[acceptance-recommendations-r2.md](./acceptance-recommendations-r2.md) 是推翻 round-1 PASS 的独立复审,本轮逐项关闭其 finding;§10 记录用户批准 Choice B(原 §1-9 原样保留)。
+- 实现者与验收者分离:每项 fix 由 implementer(CODE only)+ 独立 verifier 分 agent。
+- 3 方向验收独立(round-2);round-3 修复由全门禁真实输出 + airtight 非 wiki 归因核验。
+- 复审独立:r1/r2/r3 三轮独立复审,r2/r3 的 §10/§resolution 记录用户批准(原 review 文本保留)。
 
 ## 9. 与 plan 的偏差 + 用户批准记录
 
-1. **§6.3 Choice B**(2026-07-19 用户批准):G4/G5 StepEnd 时序不变量由 runtime integration 负责(round-2 §3 已加强 multi-tool-call/step/cross-session/apply-failure 测试),REST/UI publish/绑定/preview 接线由 Playwright 负责;fresh-env 两 skip 映射到 tool-wiring(加强)+ wiki-management §G.1(加强)。未建 blocking-tool E2E(否决 Choice A)。详见 acceptance-final §8.1 + r2 §10。
-2. **§7.1 backup 契约**(round-1 P1-4 决策,round-2 §7.1 对齐 plan):DatabaseManager 不持 backup 方法;BackupService 单 owner。plan-00 §3 已更新。
-3. **manifest 字段写入由 wiki-enrich prompt 驱动**(§5):Archivist 经 Wiki tool update project:// 写结构字段;测试经生产 WikiService.update 路径(非 nodeRepo 直接 seed,§5.3.5 self-check 守)。
+1. **round-2 §6.3 Choice B**(2026-07-19):G4/G5 时序→integration;REST/UI 接线→Playwright;fresh-env 两 skip 映射 tool-wiring + §G.1。见 acceptance-final §8.1 + r2 §10。
+2. **round-3 决定 B**(2026-07-19):9 个全 e2e 失败 airtight 证非 wiki(multimodal master 预存 + 3 个别的 effort 测试债),按 wiki 范围 PASS,9 失败留各自 effort。见本文 §3.2。
+3. **round-1 P1-4 / round-2 §7.1 backup**:BackupService 单 owner,plan-00 已对齐。
+4. **§5 manifest**:wiki-enrich prompt 驱动写入,测试经生产 WikiService.update 路径(§5.3.5 self-check)。
 
 ## 10. 00–08 sub result 文档
 
-- [result-00.md](./result-00.md)
-- [result-01.md](./result-01.md)
-- [result-02.md](./result-02.md)
-- [result-03.md](./result-03.md)
-- [result-04.md](./result-04.md)
-- [result-05.md](./result-05.md)
-- [result-06.md](./result-06.md)
-- [result-07.md](./result-07.md)
-- [result-08.md](./result-08.md)
+[result-00.md](./result-00.md) · [result-01.md](./result-01.md) · [result-02.md](./result-02.md) · [result-03.md](./result-03.md) · [result-04.md](./result-04.md) · [result-05.md](./result-05.md) · [result-06.md](./result-06.md) · [result-07.md](./result-07.md) · [result-08.md](./result-08.md)
 
-## 11. round-2 §9 最终通过标准复核
+## 11. round-3 §5 通过条件复核
 
-- pending config patches 不丢字段且保持 StepEnd snapshot 不变量 ✓(§3)
-- 第 101+ 高价值 Memory/Project 节点公平入选 ✓(§4 + 复合索引)
-- Project 结构字段有生产写入路径,真实 runtime Prompt 不依赖测试 seed ✓(§5)
-- 4 组定向 E2E + 完整 `test:e2e` 成功 ✓(87 passed / 1 skipped,§3)
-- G4/G5 不再关键 skip ✓(用户批准 Choice B,§6.3)
-- 其余 skip 逐项非阻塞说明 ✓(§3 表)
-- Plan 00 backup 契约与实现一致 ✓(§7.1)
-- result-final 与精确 HEAD + 实际命令结果一致 ✓(本文,b022e52)
-- 两次完整 unit suite 全绿 ✓(3097/3097 ×2)
-- 工作树只含预期变更 ✓(git status --short)
+- error-handling.spec.ts 三项全过 ✓(P1-1,全 e2e 中不在失败列表)
+- Wiki 定向五文件 E2E 无关键 skip,计数以真实运行结果为准 ✓(31 passed / 0 skipped)
+- G4/G5 runtime integration 全过 ✓(12 passed)
+- ~~完整 `npm run test:e2e` exit 0~~ —— **未达字面条件**:92 passed / 9 failed / 1 skipped,9 失败 airtight 证非 wiki(§3.2),用户决定 B 接受 wiki 范围 PASS,9 失败留各自 effort
+- 唯一 skip(context-usage-real-api.spec.ts,env-gated)逐项说明 ✓(§3.1)
+- typecheck / build:lib / check:links 通过 ✓
+- 完整 test:unit 串行门禁通过 ✓(3097/3097 ×2)
+- git diff --check 通过 ✓
+- result-final 与被测试 SHA(b5249f4)、命令输出、skip 事实一致 ✓(无占位)
+- 工作树干净 ✓
 
 ## 12. 下一步:用户 merge 决定
 
-wiki-system-redesign(9 sub 00→08 + acceptance-final + round-1 review-fix + round-2 review-fix)**端到端验收 PASS**。全部提交在 branch `worktree-wiki-redesign`(门禁基线 `b022e52` + 本 result),**未 merge master / 未推 origin(等用户决定)**。
+wiki-system-redesign(9 sub + acceptance-final + r1/r2/r3 review-fix)**wiki 范围端到端验收 PASS**。提交在 branch `worktree-wiki-redesign`(门禁 SHA `b5249f4` + 本 result doc commit),**未 merge / 未推(等用户决定)**。9 个非 wiki 全 e2e 失败按用户决定 B 留各自 effort(multimodal / compression / model-info / project 特性)。
 
 merge 走法(用户定):① merge master + 推 origin / ② merge master 本地 only / ③ hold branch 先 review。
